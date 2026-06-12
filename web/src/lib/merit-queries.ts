@@ -141,12 +141,13 @@ async function findFromMaterializedView(
 ): Promise<CollegeMatch[]> {
   // Fetch MS OPEN rankings (for fixed ranking across all configurations)
   const msOpenRawRows = await prisma.$queryRaw<Array<{ college_id: string; division_id: string }>>`
-    SELECT DISTINCT college_id, division_id
+    SELECT college_id, division_id
     FROM college_cutoff_stats
     WHERE course = ${filters.course}::"Course"
       AND category = 'OPEN'
       AND candidature_group = 'MS'
-    ORDER BY median_percentile DESC, college_name ASC
+    GROUP BY college_id, division_id
+    ORDER BY AVG(median_percentile) DESC
   `;
 
   const msOpenRanks = new Map<string, number>();
@@ -187,12 +188,13 @@ async function findFromLiveAggregation(
 ): Promise<CollegeMatch[]> {
   // Fetch MS OPEN rankings for the reference ordering
   const msOpenRows = await prisma.$queryRaw<Array<{ college_id: string; division_id: string }>>`
-    SELECT DISTINCT college_id, division_id
+    SELECT college_id, division_id
     FROM college_cutoff_stats
     WHERE course = ${filters.course}::"Course"
       AND category = 'OPEN'
       AND candidature_group = 'MS'
-    ORDER BY median_percentile DESC, college_name ASC
+    GROUP BY college_id, division_id
+    ORDER BY AVG(median_percentile) DESC
   `;
 
   const msOpenRanks = new Map<string, number>();
