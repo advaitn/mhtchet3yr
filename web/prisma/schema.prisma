@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Course {
+  LLB_3
+  LLB_5
+}
+
+model AdmissionCycle {
+  id         String    @id @default(cuid())
+  course     Course
+  year       Int
+  slug       String    @unique
+  sourceFile String?   @map("source_file")
+  rowCount   Int       @default(0) @map("row_count")
+  importedAt DateTime? @map("imported_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  entries    MeritEntry[]
+
+  @@unique([course, year])
+  @@map("admission_cycles")
+}
+
+model MeritEntry {
+  id                     String         @id @default(cuid())
+  cycleId                String         @map("cycle_id")
+  cycle                  AdmissionCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  universityId           String         @map("university_id")
+  universityName         String         @map("university_name")
+  collegeId              String         @map("college_id")
+  collegeName            String         @map("college_name")
+  divisionId             String         @map("division_id")
+  divisionName           String         @map("division_name")
+  meritNo                Int            @map("merit_no")
+  meritPercentile        Decimal        @map("merit_percentile") @db.Decimal(10, 7)
+  applicationId          String         @map("application_id")
+  candidateName          String         @map("candidate_name")
+  candidatureType        String         @map("candidature_type")
+  category               String
+  eligibleInOpenCategory String         @map("eligible_in_open_category")
+  differentlyAbledPh     String         @map("differently_abled_ph")
+  orphan                 String
+  exServicemen           String         @map("ex_servicemen")
+  exServicemenMeritNo    String?        @map("ex_servicemen_merit_no")
+  exServicemenPriority   String?        @map("ex_servicemen_priority")
+  minorityDetails        String?        @map("minority_details")
+  createdAt              DateTime       @default(now()) @map("created_at")
+
+  @@index([cycleId])
+  @@index([cycleId, category])
+  @@index([cycleId, collegeId, category])
+  @@index([cycleId, meritPercentile])
+  @@map("merit_entries")
+}

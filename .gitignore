@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Scraped data (large — load via db:import locally)
+output/
+fe_output/
+
+# Node / Next.js
+web/node_modules/
+web/.next/
+web/out/
+web/build/
+web/.vercel/
+web/*.tsbuildinfo
+web/next-env.d.ts
+web/src/generated/prisma/
+
+# Secrets
+.env
+.env.*
+!.env.example
+web/.env
+web/.env.*
+!web/.env.example
+
+# OS / editor
+.DS_Store
+*.pem
