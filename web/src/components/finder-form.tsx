@@ -318,9 +318,14 @@ export function FinderForm({ course }: FinderFormProps) {
                           <p className="font-semibold text-foreground">
                             {match.collegeName}
                           </p>
-                          <p className="text-sm text-muted-foreground">
-                            {match.divisionName}
-                          </p>
+                          <div className="space-y-0.5">
+                            <p className="text-xs text-muted-foreground">
+                              {match.divisionName}
+                            </p>
+                            <p className="text-xs font-medium text-primary/70">
+                              {match.universityName}
+                            </p>
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-4">
@@ -341,7 +346,7 @@ export function FinderForm({ course }: FinderFormProps) {
                             </button>
                           </PopoverTrigger>
                           <PopoverContent>
-                            <div className="space-y-3 w-64">
+                            <div className="space-y-3 w-72">
                               <div>
                                 <p className="text-xs font-semibold uppercase text-muted-foreground">
                                   Your percentile
@@ -352,10 +357,30 @@ export function FinderForm({ course }: FinderFormProps) {
                               </div>
                               <div className="border-t border-border pt-3">
                                 <p className="text-xs font-semibold uppercase text-muted-foreground">
-                                  Qualification rate
+                                  Qualification consistency
                                 </p>
-                                <p className="text-lg font-bold text-foreground">
-                                  {match.yearsQualified}/{match.years.length} years
+                                <div className="mt-2 space-y-1">
+                                  {match.years.map((year) => (
+                                    <div key={year.year} className="flex items-center justify-between text-sm">
+                                      <span className="text-muted-foreground">{year.year}</span>
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-foreground">
+                                          {year.cutoff.toFixed(1)}%
+                                        </span>
+                                        <span className={cn(
+                                          "text-xs px-2 py-0.5 rounded",
+                                          year.qualifies
+                                            ? "bg-green-100 text-green-800"
+                                            : "bg-red-100 text-red-800"
+                                        )}>
+                                          {year.qualifies ? "✓ Qualify" : "✗ Below"}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                                <p className="mt-2 text-xs font-medium text-foreground">
+                                  Overall: {match.yearsQualified}/{match.years.length} years
                                 </p>
                               </div>
                               <div className="border-t border-border pt-3">
@@ -368,19 +393,24 @@ export function FinderForm({ course }: FinderFormProps) {
                               </div>
                               <div className="border-t border-border pt-3">
                                 <p className="text-xs font-semibold uppercase text-muted-foreground">
-                                  Average median
+                                  Median percentiles
                                 </p>
-                                <p className="text-lg font-bold text-foreground">
-                                  {match.avgMedian.toFixed(1)}%
+                                <p className="text-sm text-foreground">
+                                  Average: <span className="font-bold">{match.avgMedian.toFixed(1)}%</span>
+                                </p>
+                                <p className="text-sm text-foreground">
+                                  Best: <span className="font-bold">{match.bestMedian.toFixed(1)}%</span>
                                 </p>
                               </div>
                               <div className="border-t border-border pt-3">
                                 <p className="text-xs font-medium text-muted-foreground">
                                   {chancePercent === 100
-                                    ? "You qualify for this college in all years."
-                                    : chancePercent > 0
-                                      ? `You qualify in ${match.yearsQualified} out of ${match.years.length} years.`
-                                      : "Your percentile is below the cutoff in all available years."}
+                                    ? "✓ You qualify in all available years. Very safe option."
+                                    : chancePercent >= 67
+                                      ? "✓ You qualify in most years. Safe option."
+                                      : chancePercent >= 34
+                                        ? "◐ You qualify in some years. Moderate option."
+                                        : "✗ You qualify in very few years. Risky option."}
                                 </p>
                               </div>
                             </div>
