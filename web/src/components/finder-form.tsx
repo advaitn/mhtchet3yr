@@ -50,6 +50,15 @@ export function FinderForm({ course }: FinderFormProps) {
 
   const courseLabel = course === "LLB_5" ? "5Y" : "3Y";
 
+  const sortedMatches = useMemo(() => {
+    // Sort by average cutoff percentile (lowest first = safest colleges)
+    return [...matches].sort((a, b) => {
+      const avgCutoffA = a.years.reduce((sum, y) => sum + y.cutoff, 0) / a.years.length;
+      const avgCutoffB = b.years.reduce((sum, y) => sum + y.cutoff, 0) / b.years.length;
+      return avgCutoffA - avgCutoffB;
+    });
+  }, [matches]);
+
   const summary = useMemo(() => {
     if (!hasSearched) {
       return null;
