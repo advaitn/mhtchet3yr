@@ -1,11 +1,11 @@
 import { Pool } from "pg";
 
 async function migrateData() {
-  const sourceUrl = process.env.DATABASE_URL;
+  const sourceUrl = process.env.DATABASE_URL_TO_MIGRATE_FROM;
   const targetUrl = process.env.DATABASE_URL_2;
 
   if (!sourceUrl || !targetUrl) {
-    console.error("Missing DATABASE_URL or DATABASE_URL_2");
+    console.error("Missing DATABASE_URL_TO_MIGRATE_FROM or DATABASE_URL_2");
     process.exit(1);
   }
 
@@ -15,89 +15,73 @@ async function migrateData() {
   try {
     console.log("Starting data migration...");
 
-    // Migrate admissionCycle table
-    console.log("Migrating admissionCycle table...");
-    const cycles = await sourcePool.query("SELECT * FROM admissionCycle");
+    // Migrate admission_cycles
+    console.log("Migrating admission_cycles...");
+    const cycles = await sourcePool.query(
+      `SELECT id, course, year, slug, source_file, row_count, imported_at, created_at, updated_at FROM admission_cycles`
+    );
     for (const cycle of cycles.rows) {
       await targetPool.query(
-        `INSERT INTO admissionCycle (id, slug, course, year, rowCount, createdAt, updatedAt) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT (id) DO UPDATE SET rowCount = EXCLUDED.rowCount, updatedAt = EXCLUDED.updatedAt`,
+        `INSERT INTO admission_cycles (id, course, year, slug, source_file, row_count, imported_at, created_at, updated_at) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (id) DO UPDATE SET row_count = EXCLUDED.row_count, updated_at = EXCLUDED.updated_at`,
         [
           cycle.id,
-          cycle.slug,
           cycle.course,
           cycle.year,
-          cycle.rowCount,
-          cycle.createdAt,
-          cycle.updatedAt,
+          cycle.slug,
+          cycle.source_file,
+          cycle.row_count || 0,
+          cycle.imported_at,
+          cycle.created_at,
+          cycle.updated_at,
         ]
       );
     }
     console.log(`✓ Migrated ${cycles.rows.length} admission cycles`);
 
-    // Migrate meritEntry table
-    console.log("Migrating meritEntry table...");
-    const entries = await sourcePool.query("SELECT * FROM meritEntry");
+    // Migrate merit_entries
+    console.log("Migrating merit_entries...");
+    const entries = await sourcePool.query(`SELECT * FROM merit_entries`);
     console.log(`Found ${entries.rows.length} merit entries to migrate...`);
 
     // Batch insert for performance
     const batchSize = 1000;
     for (let i = 0; i < entries.rows.length; i += batchSize) {
       const batch = entries.rows.slice(i, i + batchSize);
-      const values = batch
-        .map(
-          (entry: any, idx: number) =>
-            `($${idx * 9 + 1}, $${idx * 9 + 2}, $${idx * 9 + 3}, $${idx * 9 + 4}, $${idx * 9 + 5}, $${idx * 9 + 6}, $${idx * 9 + 7}, $${idx * 9 + 8}, $${idx * 9 + 9})`
+      
+      const columnNames = [
+        "id", "cycle_id", "university_id", "university_name", "college_id", "college_name",
+        "division_id", "division_name", "merit_no", "merit_percentile", "application_id",
+        "candidate_name", "candidature_type", "category", "eligible_in_open_category",
+        "differently_abled_ph", "orphan", "ex_servicemen", "ex_servicemen_merit_no",
+        "ex_servicemen_priority", "minority_details", "created_at"
+      ];
+
+      const placeholders = batch
+        .map((_, idx) =>
+          `(${columnNames.map((_, colIdx) => `$${idx * columnNames.length + colIdx + 1}`).join(", ")})`
         )
         .join(",");
 
       const flatParams: any[] = [];
       batch.forEach((entry: any) => {
-        flatParams.push(
-          entry.id,
-          entry.admissionCycleId,
-          entry.rank,
-          entry.name,
-          entry.caste,
-          entry.merit,
-          entry.cutoff,
-          entry.createdAt,
-          entry.updatedAt
-        );
+        columnNames.forEach((col) => {
+          flatParams.push(entry[col]);
+        });
       });
 
+      const insertColumns = columnNames.join(", ");
       await targetPool.query(
-        `INSERT INTO meritEntry (id, admissionCycleId, rank, name, caste, merit, cutoff, createdAt, updatedAt) 
-         VALUES ${values}
+        `INSERT INTO merit_entries (${insertColumns}) 
+         VALUES ${placeholders}
          ON CONFLICT (id) DO NOTHING`,
         flatParams
       );
 
-      console.log(
-        `✓ Migrated ${Math.min(i + batchSize, entries.rows.length)}/${entries.rows.length} merit entries`
-      );
+      const progress = Math.min(i + batchSize, entries.rows.length);
+      console.log(`✓ Migrated ${progress}/${entries.rows.length} merit entries`);
     }
-
-    // Migrate cutoffStats table
-    console.log("Migrating cutoffStats table...");
-    const stats = await sourcePool.query("SELECT * FROM cutoffStats");
-    for (const stat of stats.rows) {
-      await targetPool.query(
-        `INSERT INTO cutoffStats (id, admissionCycleId, caste, cutoff, createdAt, updatedAt) 
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (id) DO UPDATE SET cutoff = EXCLUDED.cutoff, updatedAt = EXCLUDED.updatedAt`,
-        [
-          stat.id,
-          stat.admissionCycleId,
-          stat.caste,
-          stat.cutoff,
-          stat.createdAt,
-          stat.updatedAt,
-        ]
-      );
-    }
-    console.log(`✓ Migrated ${stats.rows.length} cutoff stats`);
 
     console.log("\n✅ Data migration completed successfully!");
   } catch (error) {
