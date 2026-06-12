@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, BarChart3, Database, Search, Sparkles } from "lucide-react";
+import { ArrowRight, BarChart3, Lightbulb, Zap, TrendingUp, Database } from "lucide-react";
 
 import { AppFrame } from "@/components/app-frame";
 import { ButtonLink } from "@/components/ui/button";
@@ -33,22 +33,22 @@ export default async function HomePage() {
 
   const features = [
     {
-      icon: Search,
-      title: "College Finder",
+      icon: Zap,
+      title: "Instant Search",
       description:
-        "Enter percentile, category, and MS/OMS candidature. See eligible colleges across 2023–2025 with CSV export.",
+        "Find eligible colleges instantly by entering your percentile, category, and MS/OMS status across 3 years of data.",
     },
     {
-      icon: BarChart3,
-      title: "Category Rankings",
+      icon: TrendingUp,
+      title: "Smart Rankings",
       description:
-        "Top colleges by OPEN, SC, OBC, NT, EWS, and more — with separate Maharashtra and OMS leaderboards.",
+        "View top colleges by category and candidature type—Maharashtra and OMS pools analyzed separately for accuracy.",
     },
     {
       icon: Database,
-      title: "Built for speed",
+      title: "Real-time Data",
       description:
-        "Pre-aggregated cutoffs power instant search. Special filters only hit live SQL when you need them.",
+        "Built on aggregated cutoff statistics for lightning-fast performance. Pre-calculated rankings for instant results.",
     },
   ];
 
@@ -56,52 +56,54 @@ export default async function HomePage() {
     <AppFrame>
       <PageHero />
 
-      <section className="mx-auto grid max-w-6xl gap-4 px-4 sm:px-6 lg:grid-cols-3">
-        {features.map((feature, index) => (
-          <Card
-            key={feature.title}
-            className="animate-fade-up bg-white/85 backdrop-blur"
-            style={{ animationDelay: `${index * 80}ms` }}
-          >
-            <CardContent className="space-y-4 p-6">
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-                <feature.icon className="h-5 w-5" />
-              </span>
-              <div className="space-y-2">
-                <h2 className="text-lg font-semibold text-foreground">{feature.title}</h2>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  {feature.description}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+      <section className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div className="grid gap-6 md:grid-cols-3">
+          {features.map((feature, index) => (
+            <Card
+              key={feature.title}
+              className="animate-fade-up border-0 shadow-sm hover:shadow-md transition-shadow"
+              style={{ animationDelay: `${index * 80}ms` }}
+            >
+              <CardContent className="space-y-4 p-6">
+                <div className="inline-flex h-12 w-12 items-center justify-center rounded-lg bg-accent-soft text-accent">
+                  <feature.icon className="h-6 w-6" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-base font-semibold text-foreground">{feature.title}</h3>
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    {feature.description}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </section>
 
-      <section className="mx-auto mt-10 w-full max-w-6xl px-4 sm:px-6">
-        <Card className="overflow-hidden bg-white/90">
-          <CardContent className="grid gap-6 p-6 lg:grid-cols-[1fr_auto] lg:items-center">
+      <section className="mx-auto mt-12 max-w-6xl px-4 sm:px-6">
+        <Card className="border-0 shadow-sm overflow-hidden">
+          <CardContent className="grid gap-6 p-8 lg:grid-cols-[1fr_auto] lg:items-center">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl font-semibold text-foreground">Database status</h2>
                 <Badge variant={ready ? "success" : "warning"}>
-                  {ready ? "Stats ready" : "Needs refresh"}
+                  {ready ? "Ready" : "Processing"}
                 </Badge>
               </div>
-              <p className="text-sm leading-6 text-muted-foreground">
-                {totalRows.toLocaleString()} merit rows loaded across{" "}
-                {cycles.length} admission cycles.
+              <p className="text-base leading-6 text-muted-foreground max-w-md">
+                {totalRows.toLocaleString()} merit entries loaded across{" "}
+                {cycles.length} admission cycles. Your data is up-to-date and ready for search.
               </p>
             </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {cycles.map((cycle) => (
                 <div
                   key={cycle.slug}
-                  className="rounded-2xl border border-border/70 bg-stone-50/80 px-4 py-3"
+                  className="rounded-lg border border-border bg-gray-50 px-4 py-3 text-sm"
                 >
-                  <p className="font-medium text-foreground">{cycle.slug}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {cycle.rowCount.toLocaleString()} rows
+                  <p className="font-semibold text-foreground">{cycle.slug}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {cycle.rowCount.toLocaleString()} entries
                   </p>
                 </div>
               ))}
@@ -109,46 +111,41 @@ export default async function HomePage() {
           </CardContent>
         </Card>
       </section>
-
     </AppFrame>
   );
 }
 
 function PageHero() {
   return (
-    <section className="mx-auto max-w-6xl px-4 pb-12 pt-10 sm:px-6 sm:pb-16 sm:pt-14">
-      <div className="animate-fade-up relative overflow-hidden rounded-[2rem] border border-border/80 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_48%,#fff7ed_100%)] p-8 shadow-[var(--shadow-card)] sm:p-12">
-        <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-orange-100/70 blur-3xl" />
-        <div className="absolute bottom-0 left-0 h-32 w-32 rounded-full bg-blue-100/70 blur-3xl" />
-
-        <div className="relative max-w-3xl space-y-6">
-          <Badge variant="accent" className="gap-1">
-            <Sparkles className="h-3.5 w-3.5" />
-            Maharashtra LLB CAP Waitlist Intelligence
+    <section className="mx-auto max-w-6xl px-4 pb-16 pt-10 sm:px-6 sm:pb-20 sm:pt-14">
+      <div className="animate-fade-up space-y-8">
+        <div className="space-y-4">
+          <Badge variant="accent" className="gap-1.5 px-3.5 py-1.5 text-xs font-medium">
+            <Lightbulb className="h-3.5 w-3.5" />
+            Admission Intelligence Platform
           </Badge>
 
-          <div className="space-y-4">
-            <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl sm:leading-[1.05]">
-              Find your law college with real waitlist data.
+          <div className="space-y-6">
+            <h1 className="text-5xl font-bold tracking-tight text-foreground sm:text-6xl lg:text-7xl leading-tight">
+              Find your ideal law college with confidence
             </h1>
-            <p className="max-w-2xl text-lg leading-8 text-muted-foreground">
-              Compare 3 years of LLB 3-year and 5-year waitlists. Filter by
-              category, percentile, and Maharashtra vs OMS candidature.
+            <p className="max-w-2xl text-xl leading-8 text-muted-foreground">
+              Access 3 years of real LLB waitlist data. Compare colleges by percentile, category, and candidature type to make informed decisions.
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3 pt-4">
             {COURSE_OPTIONS.map((option) => {
               const short = option.value === "LLB_5" ? "5" : "3";
               return (
-                <ButtonLink key={option.value} href={`/finder?course=${short}`}>
-                  Start {option.label}
+                <ButtonLink key={option.value} href={`/finder?course=${short}`} size="lg">
+                  Search {option.label}
                   <ArrowRight className="h-4 w-4" />
                 </ButtonLink>
               );
             })}
-            <ButtonLink href="/rankings" variant="secondary">
-              Browse rankings
+            <ButtonLink href="/rankings" variant="secondary" size="lg">
+              View rankings
             </ButtonLink>
           </div>
         </div>

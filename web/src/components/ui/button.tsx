@@ -2,17 +2,19 @@ import { cn } from "@/lib/utils";
 
 const variants = {
   primary:
-    "bg-primary text-primary-foreground shadow-sm hover:bg-[#16304f] active:scale-[0.98]",
+    "bg-primary text-primary-foreground shadow-sm hover:bg-blue-700 active:scale-[0.98]",
   secondary:
-    "border border-border bg-card text-foreground hover:bg-stone-50 active:scale-[0.98]",
-  ghost: "text-muted-foreground hover:bg-stone-100 hover:text-foreground",
+    "border border-border bg-white text-foreground hover:bg-gray-50 active:scale-[0.98]",
+  ghost: "text-muted-foreground hover:bg-gray-100 hover:text-foreground",
   accent:
-    "bg-accent text-white shadow-sm hover:bg-[#9a3412] active:scale-[0.98]",
+    "bg-accent text-white shadow-sm hover:bg-sky-500 active:scale-[0.98]",
+  success:
+    "bg-success text-white shadow-sm hover:bg-emerald-600 active:scale-[0.98]",
 } as const;
 
 const sizes = {
   sm: "h-9 px-3.5 text-sm",
-  md: "h-11 px-5 text-sm",
+  md: "h-10 px-4 text-sm",
   lg: "h-12 px-6 text-base",
 } as const;
 
@@ -30,7 +32,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition disabled:pointer-events-none disabled:opacity-50",
+        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition disabled:pointer-events-none disabled:opacity-50",
         variants[variant],
         sizes[size],
         className,
@@ -54,7 +56,7 @@ export function ButtonLink({
   return (
     <a
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition",
+        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition",
         variants[variant],
         sizes[size],
         className,

@@ -1,27 +1,27 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f6f4ef;
-  --foreground: #1c1917;
+  --background: #f8f9fa;
+  --foreground: #0f1419;
   --card: #ffffff;
-  --card-foreground: #1c1917;
-  --muted: #78716c;
-  --muted-foreground: #57534e;
-  --border: #e7e5e4;
-  --input: #d6d3d1;
-  --primary: #1e3a5f;
+  --card-foreground: #0f1419;
+  --muted: #6b7280;
+  --muted-foreground: #6b7280;
+  --border: #e5e7eb;
+  --input: #f3f4f6;
+  --primary: #1e3a8a;
   --primary-foreground: #ffffff;
-  --accent: #c2410c;
-  --accent-soft: #fff7ed;
-  --accent-foreground: #9a3412;
-  --success: #047857;
+  --accent: #0ea5e9;
+  --accent-soft: #e0f2fe;
+  --accent-foreground: #0284c7;
+  --success: #10b981;
   --success-soft: #ecfdf5;
-  --warning: #b45309;
+  --warning: #f59e0b;
   --warning-soft: #fffbeb;
-  --ring: #2563eb;
-  --radius: 0.875rem;
-  --shadow-soft: 0 1px 2px rgb(28 25 23 / 0.04), 0 8px 24px rgb(28 25 23 / 0.06);
-  --shadow-card: 0 1px 2px rgb(28 25 23 / 0.05), 0 12px 40px rgb(28 25 23 / 0.08);
+  --ring: #0ea5e9;
+  --radius: 0.75rem;
+  --shadow-soft: 0 1px 3px rgb(0 0 0 / 0.1), 0 1px 2px rgb(0 0 0 / 0.06);
+  --shadow-card: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.05);
 }
 
 @theme inline {
@@ -58,16 +58,13 @@ html {
 
 body {
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgb(255 237 213 / 0.55), transparent 28%),
-    radial-gradient(circle at top right, rgb(219 234 254 / 0.65), transparent 24%),
-    linear-gradient(180deg, #fbfaf8 0%, var(--background) 100%);
+  background: linear-gradient(135deg, #f8f9fa 0%, #f0f4f8 100%);
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
 ::selection {
-  background: rgb(37 99 235 / 0.18);
+  background: rgb(14 165 233 / 0.2);
 }
 
 :focus-visible {
@@ -92,7 +89,7 @@ body {
 
 .table-scroll {
   scrollbar-width: thin;
-  scrollbar-color: #d6d3d1 transparent;
+  scrollbar-color: #e5e7eb transparent;
 }
 
 .table-scroll::-webkit-scrollbar {
@@ -100,6 +97,6 @@ body {
 }
 
 .table-scroll::-webkit-scrollbar-thumb {
-  background: #d6d3d1;
+  background: #e5e7eb;
   border-radius: 999px;
 }
