@@ -291,8 +291,7 @@ export function FinderForm({ course }: FinderFormProps) {
               <DataTableHead>
                 <tr>
                   <th className="px-4 py-3 w-12">Rank</th>
-                  <th className="px-4 py-3">College</th>
-                  <th className="px-4 py-3">Division</th>
+                  <th className="px-4 py-3">College & Division</th>
                   <th className="px-4 py-3">Your Chances</th>
                 </tr>
               </DataTableHead>
@@ -314,11 +313,15 @@ export function FinderForm({ course }: FinderFormProps) {
                       <td className="px-4 py-4 font-bold text-primary text-lg">
                         #{index + 1}
                       </td>
-                      <td className="px-4 py-4 font-medium text-foreground">
-                        {match.collegeName}
-                      </td>
-                      <td className="max-w-xs px-4 py-4 text-sm text-muted-foreground">
-                        {match.divisionName}
+                      <td className="px-4 py-4">
+                        <div className="space-y-1">
+                          <p className="font-semibold text-foreground">
+                            {match.collegeName}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {match.divisionName}
+                          </p>
+                        </div>
                       </td>
                       <td className="px-4 py-4">
                         <Popover>
