@@ -31,6 +31,7 @@ export type CollegeMatch = {
   yearsQualified: number;
   avgMedian: number;
   bestMedian: number;
+  msOpenRank: number;
 };
 
 export type RankedCollege = {

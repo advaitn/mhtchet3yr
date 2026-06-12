@@ -50,15 +50,6 @@ export function FinderForm({ course }: FinderFormProps) {
 
   const courseLabel = course === "LLB_5" ? "5Y" : "3Y";
 
-  const sortedMatches = useMemo(() => {
-    // Sort by average cutoff percentile (lowest first = safest colleges)
-    return [...matches].sort((a, b) => {
-      const avgCutoffA = a.years.reduce((sum, y) => sum + y.cutoff, 0) / a.years.length;
-      const avgCutoffB = b.years.reduce((sum, y) => sum + y.cutoff, 0) / b.years.length;
-      return avgCutoffA - avgCutoffB;
-    });
-  }, [matches]);
-
   const summary = useMemo(() => {
     if (!hasSearched) {
       return null;
@@ -305,7 +296,7 @@ export function FinderForm({ course }: FinderFormProps) {
                 </tr>
               </DataTableHead>
               <DataTableBody>
-                {matches.map((match, index) => {
+                {matches.map((match) => {
                   // Calculate overall chance: percentage of years where user qualifies
                   const chancePercent = Math.round(
                     (match.yearsQualified / match.years.length) * 100
@@ -320,7 +311,7 @@ export function FinderForm({ course }: FinderFormProps) {
                       className="transition hover:bg-gray-50"
                     >
                       <td className="px-4 py-4 font-bold text-primary text-lg">
-                        #{index + 1}
+                        #{match.msOpenRank}
                       </td>
                       <td className="px-4 py-4">
                         <div className="space-y-1">
