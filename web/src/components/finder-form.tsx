@@ -276,7 +276,7 @@ export function FinderForm({ course }: FinderFormProps) {
             <div>
               <h2 className="text-xl font-semibold text-foreground">Results</h2>
               <p className="text-sm text-muted-foreground">
-                Hover for detailed cutoff and median percentiles.
+                Ranked by qualification consistency and average median. Hover on percentages for details.
               </p>
             </div>
             <ExportButton onClick={handleExport} disabled={matches.length === 0} />
@@ -290,25 +290,30 @@ export function FinderForm({ course }: FinderFormProps) {
             <DataTable>
               <DataTableHead>
                 <tr>
+                  <th className="px-4 py-3 w-12">Rank</th>
                   <th className="px-4 py-3">College</th>
                   <th className="px-4 py-3">Division</th>
-                  <th className="px-4 py-3">Years</th>
-                  <th className="px-4 py-3">2023</th>
-                  <th className="px-4 py-3">2024</th>
-                  <th className="px-4 py-3">2025</th>
+                  <th className="px-4 py-3">Your Chances</th>
                 </tr>
               </DataTableHead>
               <DataTableBody>
-                {matches.map((match) => {
-                  const byYear = Object.fromEntries(
-                    match.years.map((year) => [year.year, year]),
+                {matches.map((match, index) => {
+                  // Calculate overall chance: percentage of years where user qualifies
+                  const chancePercent = Math.round(
+                    (match.yearsQualified / match.years.length) * 100
                   );
+                  
+                  // Get the average cutoff across all years
+                  const avgCutoff = match.years.reduce((sum, y) => sum + y.cutoff, 0) / match.years.length;
 
                   return (
                     <tr
                       key={`${match.collegeId}-${match.divisionId}`}
                       className="transition hover:bg-gray-50"
                     >
+                      <td className="px-4 py-4 font-bold text-primary text-lg">
+                        #{index + 1}
+                      </td>
                       <td className="px-4 py-4 font-medium text-foreground">
                         {match.collegeName}
                       </td>
@@ -316,83 +321,69 @@ export function FinderForm({ course }: FinderFormProps) {
                         {match.divisionName}
                       </td>
                       <td className="px-4 py-4">
-                        <Badge
-                          variant={
-                            match.yearsQualified === 3
-                              ? "success"
-                              : match.yearsQualified >= 1
-                                ? "warning"
-                                : "default"
-                          }
-                        >
-                          {match.yearsQualified}/3
-                        </Badge>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              className={cn(
+                                "cursor-help inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-bold text-xl transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
+                                chancePercent === 100
+                                  ? "text-success"
+                                  : chancePercent >= 50
+                                    ? "text-warning"
+                                    : "text-muted-foreground",
+                              )}
+                            >
+                              {chancePercent}%
+                              <Info className="h-4 w-4 opacity-50" />
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent>
+                            <div className="space-y-3 w-64">
+                              <div>
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">
+                                  Your percentile
+                                </p>
+                                <p className="text-lg font-bold text-foreground">
+                                  {percentile}%
+                                </p>
+                              </div>
+                              <div className="border-t border-border pt-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">
+                                  Qualification rate
+                                </p>
+                                <p className="text-lg font-bold text-foreground">
+                                  {match.yearsQualified}/{match.years.length} years
+                                </p>
+                              </div>
+                              <div className="border-t border-border pt-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">
+                                  Average cutoff
+                                </p>
+                                <p className="text-lg font-bold text-foreground">
+                                  {avgCutoff.toFixed(1)}%
+                                </p>
+                              </div>
+                              <div className="border-t border-border pt-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">
+                                  Average median
+                                </p>
+                                <p className="text-lg font-bold text-foreground">
+                                  {match.avgMedian.toFixed(1)}%
+                                </p>
+                              </div>
+                              <div className="border-t border-border pt-3">
+                                <p className="text-xs font-medium text-muted-foreground">
+                                  {chancePercent === 100
+                                    ? "You qualify for this college in all years."
+                                    : chancePercent > 0
+                                      ? `You qualify in ${match.yearsQualified} out of ${match.years.length} years.`
+                                      : "Your percentile is below the cutoff in all available years."}
+                                </p>
+                              </div>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
                       </td>
-                      {[2023, 2024, 2025].map((year) => {
-                        const data = byYear[year];
-                        if (!data) {
-                          return (
-                            <td key={year} className="px-4 py-4 text-muted-foreground">
-                              —
-                            </td>
-                          );
-                        }
-
-                        return (
-                          <td key={year} className="px-4 py-4">
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <button
-                                  className={cn(
-                                    "cursor-help inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-semibold transition hover:bg-gray-100",
-                                    data.qualifies
-                                      ? "text-success"
-                                      : "text-muted-foreground",
-                                  )}
-                                >
-                                  {data.qualifies ? "✓" : "✗"} {data.cutoff.toFixed(1)}%
-                                  <Info className="h-3.5 w-3.5 opacity-50" />
-                                </button>
-                              </PopoverTrigger>
-                              <PopoverContent>
-                                <div className="space-y-2">
-                                  <div>
-                                    <p className="text-xs font-semibold uppercase text-muted-foreground">
-                                      Your percentile
-                                    </p>
-                                    <p className="text-lg font-bold text-foreground">
-                                      {percentile}%
-                                    </p>
-                                  </div>
-                                  <div className="border-t border-border pt-2">
-                                    <p className="text-xs font-semibold uppercase text-muted-foreground">
-                                      Cutoff (lowest waitlist)
-                                    </p>
-                                    <p className="text-lg font-bold text-foreground">
-                                      {data.cutoff.toFixed(1)}%
-                                    </p>
-                                  </div>
-                                  <div className="border-t border-border pt-2">
-                                    <p className="text-xs font-semibold uppercase text-muted-foreground">
-                                      Median percentile
-                                    </p>
-                                    <p className="text-lg font-bold text-foreground">
-                                      {data.median.toFixed(1)}%
-                                    </p>
-                                  </div>
-                                  <div className="border-t border-border pt-2">
-                                    <p className="text-xs font-medium text-muted-foreground">
-                                      {data.qualifies
-                                        ? "You qualify for this college in this year."
-                                        : "Your percentile is below the lowest waitlist cutoff."}
-                                    </p>
-                                  </div>
-                                </div>
-                              </PopoverContent>
-                            </Popover>
-                          </td>
-                        );
-                      })}
                     </tr>
                   );
                 })}
