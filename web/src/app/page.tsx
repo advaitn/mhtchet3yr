@@ -1,36 +1,13 @@
 import Link from "next/link";
-import { ArrowRight, BarChart3, Lightbulb, Zap, TrendingUp, Database } from "lucide-react";
+import { ArrowRight, Lightbulb, Zap, TrendingUp, Database } from "lucide-react";
 
 import { AppFrame } from "@/components/app-frame";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { COURSE_OPTIONS } from "@/lib/constants";
-import { cutoffStatsReady } from "@/lib/merit-queries";
-import { prisma } from "@/lib/prisma";
 
 export default async function HomePage() {
-  let ready = false;
-  let cycles = [];
-  let totalRows = 0;
-
-  try {
-    const [readyResult, cyclesResult, totalRowsResult] = await Promise.all([
-      cutoffStatsReady(),
-      prisma.admissionCycle.findMany({
-        orderBy: [{ course: "asc" }, { year: "desc" }],
-        select: { slug: true, course: true, year: true, rowCount: true },
-      }),
-      prisma.meritEntry.count(),
-    ]);
-    ready = readyResult;
-    cycles = cyclesResult;
-    totalRows = totalRowsResult;
-  } catch (error) {
-    console.error("[v0] Error loading database data:", error);
-    // Continue with empty data if database is not ready
-  }
-
   const features = [
     {
       icon: Zap,
@@ -78,38 +55,6 @@ export default async function HomePage() {
             </Card>
           ))}
         </div>
-      </section>
-
-      <section className="mx-auto mt-12 max-w-6xl px-4 sm:px-6">
-        <Card className="border-0 shadow-sm overflow-hidden">
-          <CardContent className="grid gap-6 p-8 lg:grid-cols-[1fr_auto] lg:items-center">
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl font-semibold text-foreground">Database status</h2>
-                <Badge variant={ready ? "success" : "warning"}>
-                  {ready ? "Ready" : "Processing"}
-                </Badge>
-              </div>
-              <p className="text-base leading-6 text-muted-foreground max-w-md">
-                {totalRows.toLocaleString()} merit entries loaded across{" "}
-                {cycles.length} admission cycles. Your data is up-to-date and ready for search.
-              </p>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {cycles.map((cycle) => (
-                <div
-                  key={cycle.slug}
-                  className="rounded-lg border border-border bg-gray-50 px-4 py-3 text-sm"
-                >
-                  <p className="font-semibold text-foreground">{cycle.slug}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {cycle.rowCount.toLocaleString()} entries
-                  </p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       </section>
     </AppFrame>
   );

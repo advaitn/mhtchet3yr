@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Search } from "lucide-react";
+import { Loader2, Search, Info } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/data-table";
 import { Field, Input, Label, Select } from "@/components/ui/input";
 import { Alert } from "@/components/ui/page-shell";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import {
   CANDIDATURE_OPTIONS,
   CATEGORIES,
@@ -275,7 +276,7 @@ export function FinderForm({ course }: FinderFormProps) {
             <div>
               <h2 className="text-xl font-semibold text-foreground">Results</h2>
               <p className="text-sm text-muted-foreground">
-                Sorted by consistency, then average median percentile.
+                Hover for detailed cutoff and median percentiles.
               </p>
             </div>
             <ExportButton onClick={handleExport} disabled={matches.length === 0} />
@@ -295,7 +296,6 @@ export function FinderForm({ course }: FinderFormProps) {
                   <th className="px-4 py-3">2023</th>
                   <th className="px-4 py-3">2024</th>
                   <th className="px-4 py-3">2025</th>
-                  <th className="px-4 py-3">Avg Median</th>
                 </tr>
               </DataTableHead>
               <DataTableBody>
@@ -307,12 +307,12 @@ export function FinderForm({ course }: FinderFormProps) {
                   return (
                     <tr
                       key={`${match.collegeId}-${match.divisionId}`}
-                      className="transition hover:bg-stone-50/80"
+                      className="transition hover:bg-gray-50"
                     >
                       <td className="px-4 py-4 font-medium text-foreground">
                         {match.collegeName}
                       </td>
-                      <td className="max-w-xs px-4 py-4 text-muted-foreground">
+                      <td className="max-w-xs px-4 py-4 text-sm text-muted-foreground">
                         {match.divisionName}
                       </td>
                       <td className="px-4 py-4">
@@ -340,23 +340,59 @@ export function FinderForm({ course }: FinderFormProps) {
 
                         return (
                           <td key={year} className="px-4 py-4">
-                            <div
-                              className={cn(
-                                "font-medium",
-                                data.qualifies ? "text-success" : "text-muted-foreground",
-                              )}
-                            >
-                              {data.cutoff.toFixed(1)}%
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              med {data.median.toFixed(1)}%
-                            </div>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button
+                                  className={cn(
+                                    "cursor-help inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-semibold transition hover:bg-gray-100",
+                                    data.qualifies
+                                      ? "text-success"
+                                      : "text-muted-foreground",
+                                  )}
+                                >
+                                  {data.qualifies ? "✓" : "✗"} {data.cutoff.toFixed(1)}%
+                                  <Info className="h-3.5 w-3.5 opacity-50" />
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent>
+                                <div className="space-y-2">
+                                  <div>
+                                    <p className="text-xs font-semibold uppercase text-muted-foreground">
+                                      Your percentile
+                                    </p>
+                                    <p className="text-lg font-bold text-foreground">
+                                      {percentile}%
+                                    </p>
+                                  </div>
+                                  <div className="border-t border-border pt-2">
+                                    <p className="text-xs font-semibold uppercase text-muted-foreground">
+                                      Cutoff (lowest waitlist)
+                                    </p>
+                                    <p className="text-lg font-bold text-foreground">
+                                      {data.cutoff.toFixed(1)}%
+                                    </p>
+                                  </div>
+                                  <div className="border-t border-border pt-2">
+                                    <p className="text-xs font-semibold uppercase text-muted-foreground">
+                                      Median percentile
+                                    </p>
+                                    <p className="text-lg font-bold text-foreground">
+                                      {data.median.toFixed(1)}%
+                                    </p>
+                                  </div>
+                                  <div className="border-t border-border pt-2">
+                                    <p className="text-xs font-medium text-muted-foreground">
+                                      {data.qualifies
+                                        ? "You qualify for this college in this year."
+                                        : "Your percentile is below the lowest waitlist cutoff."}
+                                    </p>
+                                  </div>
+                                </div>
+                              </PopoverContent>
+                            </Popover>
                           </td>
                         );
                       })}
-                      <td className="px-4 py-4 font-semibold text-foreground">
-                        {match.avgMedian.toFixed(1)}%
-                      </td>
                     </tr>
                   );
                 })}
