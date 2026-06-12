@@ -10,14 +10,26 @@ import { cutoffStatsReady } from "@/lib/merit-queries";
 import { prisma } from "@/lib/prisma";
 
 export default async function HomePage() {
-  const [ready, cycles, totalRows] = await Promise.all([
-    cutoffStatsReady(),
-    prisma.admissionCycle.findMany({
-      orderBy: [{ course: "asc" }, { year: "desc" }],
-      select: { slug: true, course: true, year: true, rowCount: true },
-    }),
-    prisma.meritEntry.count(),
-  ]);
+  let ready = false;
+  let cycles = [];
+  let totalRows = 0;
+
+  try {
+    const [readyResult, cyclesResult, totalRowsResult] = await Promise.all([
+      cutoffStatsReady(),
+      prisma.admissionCycle.findMany({
+        orderBy: [{ course: "asc" }, { year: "desc" }],
+        select: { slug: true, course: true, year: true, rowCount: true },
+      }),
+      prisma.meritEntry.count(),
+    ]);
+    ready = readyResult;
+    cycles = cyclesResult;
+    totalRows = totalRowsResult;
+  } catch (error) {
+    console.error("[v0] Error loading database data:", error);
+    // Continue with empty data if database is not ready
+  }
 
   const features = [
     {
