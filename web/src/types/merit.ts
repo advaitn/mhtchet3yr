@@ -30,17 +30,14 @@ export type Trend = "improving" | "declining" | "stable" | "unknown";
 
 export type YearCutoff = {
   year: number;
-  /**
-   * Fraction of the matched cohort whose merit percentile is ≤ yours (0–100).
-   * Represents the actual probability of being ranked above most admitted students.
-   * null = no data for this year.
-   */
+  /** Estimated admission chance for this year (0–100). null = no data. */
   yearProb: number | null;
-  /** Median merit percentile in the cohort (pool difficulty context). */
+  /** p75 merit percentile — approximates the competitive seat line. */
+  cutoff: number;
+  /** Median of the full waitlist (context only — not the admission cutoff). */
   median: number;
-  /** Highest merit percentile in the cohort (ceiling context). */
+  /** Highest merit percentile in the matched cohort. */
   top: number;
-  /** Number of cohort rows used for this estimate. */
   waitlistCount: number;
   hasData: boolean;
 };
@@ -59,7 +56,8 @@ export type CollegeMatch = {
   avgMedian: number;
   bestMedian: number;
   msOpenRank: number;
-  msOpenMedian: number;
+  /** MS OPEN p75 cutoff averaged across years — used for prestige ranking. */
+  msOpenCutoff: number;
 };
 
 export type RankedCollege = {

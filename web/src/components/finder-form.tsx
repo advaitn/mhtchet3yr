@@ -42,7 +42,7 @@ const SORT_OPTIONS = [
   { value: "rank", label: "MS OPEN rank" },
   { value: "chance-desc", label: "Best chances first" },
   { value: "chance-asc", label: "Hardest first" },
-  { value: "ms-median-desc", label: "MS OPEN median (high → low)" },
+  { value: "ms-median-desc", label: "MS OPEN cutoff (high → low)" },
   { value: "name", label: "College name (A–Z)" },
 ] as const;
 
@@ -78,7 +78,7 @@ function sortMatches(matches: CollegeMatch[], sortBy: SortOption): CollegeMatch[
       );
     case "ms-median-desc":
       return sorted.sort(
-        (a, b) => b.msOpenMedian - a.msOpenMedian || a.msOpenRank - b.msOpenRank,
+        (a, b) => b.msOpenCutoff - a.msOpenCutoff || a.msOpenRank - b.msOpenRank,
       );
     case "name":
       return sorted.sort(
@@ -170,9 +170,9 @@ function ChancesPopover({ match }: { match: CollegeMatch }) {
                   ) : (
                     <span className="min-w-0 text-right">
                       <span className="font-semibold">{year.yearProb}%</span>
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        n={year.waitlistCount} · med {year.median.toFixed(1)}%
-                      </span>
+                                          <span className="ml-2 text-xs text-muted-foreground">
+                                            n={year.waitlistCount} · cutoff {year.cutoff.toFixed(1)}%
+                                          </span>
                     </span>
                   )}
                 </div>
@@ -219,7 +219,7 @@ function MatchCard({ match }: { match: CollegeMatch }) {
         <p className="break-words text-xs text-muted-foreground">{match.divisionName}</p>
         <p className="break-words text-xs text-primary/70">{match.universityName}</p>
         <p className="text-xs text-muted-foreground">
-          MS OPEN median {match.msOpenMedian.toFixed(1)}%
+          MS OPEN cutoff ~{match.msOpenCutoff.toFixed(1)}%
         </p>
       </div>
     </div>
@@ -573,7 +573,7 @@ export function FinderForm({ course }: FinderFormProps) {
                           {match.universityName}
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          MS OPEN median {match.msOpenMedian.toFixed(1)}%
+                          MS OPEN cutoff ~{match.msOpenCutoff.toFixed(1)}%
                         </p>
                       </td>
                       <td className="px-4 py-4">

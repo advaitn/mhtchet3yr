@@ -4,6 +4,7 @@ import {
   courseQueryToShort,
 } from "@/components/course-selector";
 import { AppFrame } from "@/components/app-frame";
+import { DataDisclaimer } from "@/components/data-disclaimer";
 import { FinderForm } from "@/components/finder-form";
 import { PageHeader, PageShell } from "@/components/ui/page-shell";
 
@@ -22,9 +23,10 @@ export default async function FinderPage({ searchParams }: FinderPageProps) {
         <PageHeader
           eyebrow="College Finder"
           title="Which colleges can you get?"
-          description="Enter your percentile, category, and candidature type. Results compare 2023–2025 waitlist cutoffs and highlight colleges where your percentile meets or exceeds the lowest waitlist percentile for that year."
+          description="Enter your percentile, category, and candidature type. Results compare 2023–2025 published waitlists and estimate how competitive you are at each college."
           actions={<CourseSelector selected={courseShort} basePath="/finder" />}
         />
+        <DataDisclaimer variant="panel" />
         <FinderForm course={course} />
       </PageShell>
     </AppFrame>

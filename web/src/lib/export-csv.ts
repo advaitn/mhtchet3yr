@@ -11,22 +11,22 @@ function escapeCsv(value: string | number): string {
 export function collegeMatchesToCsv(matches: CollegeMatch[]): string {
   const headers = [
     "MS OPEN Rank",
-    "MS OPEN Median %",
+    "MS OPEN Cutoff %",
     "College",
     "Division",
     "University",
     "Match",
     "Chance %",
     "Trend",
-    "Avg Pool Median %",
+    "Avg Profile Cutoff %",
     "2023 Chance %",
-    "2023 Pool Median %",
+    "2023 Cutoff %",
     "2023 Cohort Size",
     "2024 Chance %",
-    "2024 Pool Median %",
+    "2024 Cutoff %",
     "2024 Cohort Size",
     "2025 Chance %",
-    "2025 Pool Median %",
+    "2025 Cutoff %",
     "2025 Cohort Size",
   ];
 
@@ -35,7 +35,7 @@ export function collegeMatchesToCsv(matches: CollegeMatch[]): string {
 
     return [
       match.msOpenRank,
-      match.msOpenMedian.toFixed(2),
+      match.msOpenCutoff.toFixed(2),
       match.collegeName,
       match.divisionName,
       match.universityName,
@@ -44,13 +44,13 @@ export function collegeMatchesToCsv(matches: CollegeMatch[]): string {
       match.trend,
       match.avgMedian > 0 ? match.avgMedian.toFixed(2) : "",
       byYear[2023]?.hasData ? byYear[2023].yearProb : "",
-      byYear[2023]?.hasData ? byYear[2023].median.toFixed(2) : "",
+      byYear[2023]?.hasData ? byYear[2023].cutoff.toFixed(2) : "",
       byYear[2023]?.hasData ? byYear[2023].waitlistCount : "",
       byYear[2024]?.hasData ? byYear[2024].yearProb : "",
-      byYear[2024]?.hasData ? byYear[2024].median.toFixed(2) : "",
+      byYear[2024]?.hasData ? byYear[2024].cutoff.toFixed(2) : "",
       byYear[2024]?.hasData ? byYear[2024].waitlistCount : "",
       byYear[2025]?.hasData ? byYear[2025].yearProb : "",
-      byYear[2025]?.hasData ? byYear[2025].median.toFixed(2) : "",
+      byYear[2025]?.hasData ? byYear[2025].cutoff.toFixed(2) : "",
       byYear[2025]?.hasData ? byYear[2025].waitlistCount : "",
     ];
   });

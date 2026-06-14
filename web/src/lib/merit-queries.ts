@@ -42,8 +42,8 @@ type ProfileCutoffRow = {
   division_id: string;
   division_name: string;
   university_name: string;
-  /** cume_dist: fraction of cohort with merit_percentile <= user's percentile (0–1). */
-  year_prob: Prisma.Decimal;
+  cutoff_percentile: Prisma.Decimal;
+  competitive_percentile: Prisma.Decimal;
   top_percentile: Prisma.Decimal;
   median_percentile: Prisma.Decimal;
   waitlist_count: number;
@@ -62,21 +62,43 @@ function groupKey(collegeId: string, divisionId: string): string {
 }
 
 /**
- * Calibrate the raw cume_dist value into an admission probability.
- *
- * The waitlist is the full applicant pool, not just admitted students.
- * Typically the top ~25% of each college's pool get seats, meaning
- * a cume_dist of 0.75 is the 50/50 boundary.
- * We use a linear mapping centered at 0.75 with ±0.15 spread:
- *   0.60 → 0%   (clearly below cutoff zone)
- *   0.75 → 50%  (right at the margin)
- *   0.90 → 100% (solidly in the top tier)
+ * Estimate admission chance from where the user's percentile sits in the
+ * waitlist's competitive band. The full waitlist median (~60–70%) reflects
+ * all applicants, not admitted students — so we anchor on p75 (seat line),
+ * p95 (strong), and max (ceiling) instead of score-distribution cume_dist.
  */
-export function calibrateYearProb(rawCumeDist: number): number {
-  const CUTOFF = 0.75;
-  const SPREAD = 0.15;
-  const calibrated = 0.5 + (rawCumeDist - CUTOFF) / (2 * SPREAD);
-  return Math.round(Math.min(1, Math.max(0, calibrated)) * 100);
+export function computeChanceFromCutoffs(
+  userPercentile: number,
+  cutoffP75: number,
+  competitiveP95: number,
+  top: number,
+): number {
+  if (top <= cutoffP75) {
+    if (userPercentile >= top) return 90;
+    if (userPercentile >= cutoffP75) return 50;
+    return 10;
+  }
+
+  if (userPercentile >= top) return 95;
+
+  if (userPercentile >= competitiveP95) {
+    const span = Math.max(top - competitiveP95, 0.01);
+    const t = (userPercentile - competitiveP95) / span;
+    return Math.round(75 + t * 20);
+  }
+
+  if (userPercentile >= cutoffP75) {
+    const span = Math.max(competitiveP95 - cutoffP75, 0.01);
+    const t = (userPercentile - cutoffP75) / span;
+    return Math.round(40 + t * 35);
+  }
+
+  const floor = Math.max(0, cutoffP75 - 20);
+  if (userPercentile <= floor) return 5;
+
+  const span = Math.max(cutoffP75 - floor, 0.01);
+  const t = (userPercentile - floor) / span;
+  return Math.round(5 + t * 35);
 }
 
 export function toMatchLabel(chancePercent: number): MatchLabel {
@@ -100,12 +122,18 @@ function computeTrend(years: YearCutoff[]): Trend {
   return "stable";
 }
 
-function buildYearCutoff(row: ProfileCutoffRow): YearCutoff {
+function buildYearCutoff(row: ProfileCutoffRow, userPercentile: number): YearCutoff {
+  const cutoff = toNumber(row.cutoff_percentile);
+  const competitive = toNumber(row.competitive_percentile);
+  const top = toNumber(row.top_percentile);
+  const median = toNumber(row.median_percentile);
+
   return {
     year: row.year,
-    yearProb: calibrateYearProb(toNumber(row.year_prob)),
-    median: toNumber(row.median_percentile),
-    top: toNumber(row.top_percentile),
+    yearProb: computeChanceFromCutoffs(userPercentile, cutoff, competitive, top),
+    cutoff,
+    median,
+    top,
     waitlistCount: row.waitlist_count,
     hasData: true,
   };
@@ -115,6 +143,7 @@ function emptyYearCutoff(year: number): YearCutoff {
   return {
     year,
     yearProb: null,
+    cutoff: 0,
     median: 0,
     top: 0,
     waitlistCount: 0,
@@ -137,8 +166,11 @@ function mergeCutoffRows(...sources: ProfileCutoffRow[][]): ProfileCutoffRow[] {
   return [...byKey.values()];
 }
 
-function buildArbitratedYears(rows: ProfileCutoffRow[]): YearCutoff[] {
-  const byYear = new Map(rows.map((row) => [row.year, buildYearCutoff(row)]));
+function buildArbitratedYears(
+  rows: ProfileCutoffRow[],
+  userPercentile: number,
+): YearCutoff[] {
+  const byYear = new Map(rows.map((row) => [row.year, buildYearCutoff(row, userPercentile)]));
   return YEARS.map((year) => byYear.get(year) ?? emptyYearCutoff(year));
 }
 
@@ -147,7 +179,7 @@ function summarizeYears(years: YearCutoff[]): Pick<
   "years" | "chancePercent" | "matchLabel" | "trend" | "avgMedian" | "bestMedian"
 > {
   const yearsWithData = years.filter((y) => y.hasData && y.yearProb !== null);
-  const medians = yearsWithData.map((y) => y.median);
+  const cutoffs = yearsWithData.map((y) => y.cutoff);
 
   const chancePercent =
     yearsWithData.length > 0
@@ -162,8 +194,8 @@ function summarizeYears(years: YearCutoff[]): Pick<
     matchLabel: yearsWithData.length === 0 ? "unknown" : toMatchLabel(chancePercent),
     trend: computeTrend(years),
     avgMedian:
-      medians.length > 0 ? medians.reduce((sum, v) => sum + v, 0) / medians.length : 0,
-    bestMedian: medians.length > 0 ? Math.max(...medians) : 0,
+      cutoffs.length > 0 ? cutoffs.reduce((sum, v) => sum + v, 0) / cutoffs.length : 0,
+    bestMedian: cutoffs.length > 0 ? Math.max(...cutoffs) : 0,
   };
 }
 
@@ -173,7 +205,7 @@ type MsOpenRankRow = {
   division_id: string;
   division_name: string;
   university_name: string;
-  ms_open_median: Prisma.Decimal;
+  ms_open_cutoff: Prisma.Decimal;
 };
 
 async function getMsOpenRankList(course: CandidateProfile["course"]): Promise<MsOpenRankRow[]> {
@@ -184,19 +216,20 @@ async function getMsOpenRankList(course: CandidateProfile["course"]): Promise<Ms
       division_id,
       MIN(division_name) AS division_name,
       MIN(university_name) AS university_name,
-      AVG(median_percentile) AS ms_open_median
+      AVG(cutoff_percentile) AS ms_open_cutoff
     FROM college_cutoff_stats
     WHERE course = ${course}::"Course"
       AND category = 'OPEN'
       AND candidature_group = 'MS'
       AND waitlist_count >= ${MIN_COHORT_SIZE}
     GROUP BY college_id, division_id
-    ORDER BY ms_open_median DESC, MIN(college_name) ASC
+    ORDER BY ms_open_cutoff DESC, MIN(college_name) ASC
   `;
 }
 
 function aggregateProfileByDivision(
   rows: ProfileCutoffRow[],
+  userPercentile: number,
 ): Map<
   string,
   Pick<CollegeMatch, "years" | "chancePercent" | "matchLabel" | "trend" | "avgMedian" | "bestMedian">
@@ -219,7 +252,7 @@ function aggregateProfileByDivision(
   >();
 
   for (const [key, divisionRows] of grouped) {
-    result.set(key, summarizeYears(buildArbitratedYears(divisionRows)));
+    result.set(key, summarizeYears(buildArbitratedYears(divisionRows, userPercentile)));
   }
 
   return result;
@@ -233,13 +266,12 @@ async function fetchProfileCutoffs(
   } = {},
 ): Promise<ProfileCutoffRow[]> {
   const years = options.years ?? YEARS;
-  const profileSql = buildProfileSql(profile, 3, "me", {
+  const profileSql = buildProfileSql(profile, 2, "me", {
     includeDemographics: options.includeDemographics ?? true,
   });
-  const yearFilterIndex = profileSql.params.length + 3;
-  const minCohortParam = profileSql.params.length + 4;
+  const yearFilterIndex = profileSql.params.length + 2;
+  const minCohortParam = profileSql.params.length + 3;
 
-  // $1 = course, $2 = user percentile (for cume_dist), $3..N = profile filters
   const query = `
     SELECT
       ac.year,
@@ -248,7 +280,8 @@ async function fetchProfileCutoffs(
       me.division_id,
       me.division_name,
       me.university_name,
-      COUNT(*) FILTER (WHERE me.merit_percentile <= $2::float)::float / COUNT(*) AS year_prob,
+      PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY me.merit_percentile) AS cutoff_percentile,
+      PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY me.merit_percentile) AS competitive_percentile,
       MAX(me.merit_percentile) AS top_percentile,
       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY me.merit_percentile) AS median_percentile,
       COUNT(*)::int AS waitlist_count
@@ -256,6 +289,8 @@ async function fetchProfileCutoffs(
     INNER JOIN admission_cycles ac ON ac.id = me.cycle_id
     WHERE ac.course = $1::"Course"
       AND ac.year = ANY($${yearFilterIndex}::int[])
+      AND me.merit_percentile >= 0
+      AND me.merit_percentile <= 100
       AND ${profileSql.where.join("\n      AND ")}
     GROUP BY
       ac.year,
@@ -270,7 +305,6 @@ async function fetchProfileCutoffs(
   return prisma.$queryRawUnsafe<ProfileCutoffRow[]>(
     query,
     profile.course,
-    profile.percentile,
     ...profileSql.params,
     years,
     MIN_COHORT_SIZE,
@@ -290,7 +324,7 @@ export async function findEligibleColleges(
   ]);
 
   const mergedRows = mergeCutoffRows(strictRows, relaxedRows);
-  const profileByDivision = aggregateProfileByDivision(mergedRows);
+  const profileByDivision = aggregateProfileByDivision(mergedRows, profile.percentile);
 
   const emptyProfile = summarizeYears(YEARS.map((year) => emptyYearCutoff(year)));
 
@@ -311,7 +345,7 @@ export async function findEligibleColleges(
       avgMedian: profileData.avgMedian,
       bestMedian: profileData.bestMedian,
       msOpenRank: index + 1,
-      msOpenMedian: toNumber(row.ms_open_median),
+      msOpenCutoff: toNumber(row.ms_open_cutoff),
     };
   });
 }

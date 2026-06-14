@@ -23,6 +23,8 @@ SELECT
   COUNT(*)::int AS waitlist_count
 FROM merit_entries me
 INNER JOIN admission_cycles ac ON ac.id = me.cycle_id
+WHERE me.merit_percentile >= 0
+  AND me.merit_percentile <= 100
 GROUP BY
   ac.course,
   ac.year,
