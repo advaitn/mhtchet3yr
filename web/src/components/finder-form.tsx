@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, Search, Info, TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, useCallback } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -208,12 +208,128 @@ function ChancesPopover({ match }: { match: CollegeMatch }) {
   );
 }
 
-function MatchCard({ match }: { match: CollegeMatch }) {
+type AdmitRow = { year: number; category: string; quota: string; count: number };
+type InfoState = { status: "idle" } | { status: "loading" } | { status: "done"; rows: AdmitRow[] } | { status: "error" };
+
+function CollegeInfoButton({ match, course }: { match: CollegeMatch; course: string }) {
+  const [open, setOpen] = useState(false);
+  const [info, setInfo] = useState<InfoState>({ status: "idle" });
+
+  const handleOpen = useCallback(async (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen || info.status !== "idle") return;
+    setInfo({ status: "loading" });
+    try {
+      const res = await fetch(
+        `/api/college-info?collegeId=${encodeURIComponent(match.collegeId)}&divisionId=${encodeURIComponent(match.divisionId)}&course=${encodeURIComponent(course)}`,
+      );
+      const data = await res.json() as { rows: AdmitRow[] };
+      setInfo({ status: "done", rows: data.rows });
+    } catch {
+      setInfo({ status: "error" });
+    }
+  }, [match.collegeId, match.divisionId, course, info.status]);
+
+  // Group rows by year
+  const byYear = useMemo(() => {
+    if (info.status !== "done") return null;
+    const map = new Map<number, AdmitRow[]>();
+    for (const row of info.rows) {
+      const existing = map.get(row.year);
+      if (existing) existing.push(row);
+      else map.set(row.year, [row]);
+    }
+    return [...map.entries()].sort((a, b) => a[0] - b[0]);
+  }, [info]);
+
+  const QUOTA_ORDER = ["State", "OMS", "Minority", "NRI"];
+
+  return (
+    <Popover open={open} onOpenChange={handleOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border bg-white text-muted-foreground transition hover:border-primary/40 hover:text-primary"
+          aria-label="View admission breakdown"
+        >
+          <Info className="h-3 w-3" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[min(22rem,calc(100vw-2rem))] p-0">
+        <div className="border-b border-border px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Admitted seats by year
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground/70">
+            All categories &amp; quotas incl. Minority · counts only
+          </p>
+        </div>
+
+        {info.status === "loading" && (
+          <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Loading…
+          </div>
+        )}
+
+        {info.status === "error" && (
+          <p className="px-4 py-4 text-xs text-red-500">Failed to load data.</p>
+        )}
+
+        {info.status === "done" && byYear && (
+          <div className="divide-y divide-border text-xs">
+            {byYear.length === 0 ? (
+              <p className="px-4 py-4 text-muted-foreground">No admission data found.</p>
+            ) : (
+              byYear.map(([year, rows]) => {
+                // Group by category within year
+                const byCategory = new Map<string, AdmitRow[]>();
+                for (const row of rows) {
+                  const ex = byCategory.get(row.category);
+                  if (ex) ex.push(row);
+                  else byCategory.set(row.category, [row]);
+                }
+                const categories = [...byCategory.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+
+                return (
+                  <div key={year} className="px-4 py-2.5">
+                    <p className="mb-1.5 font-semibold text-foreground">{year}</p>
+                    <div className="space-y-0.5">
+                      {categories.map(([cat, catRows]) => {
+                        const sorted = [...catRows].sort(
+                          (a, b) =>
+                            QUOTA_ORDER.indexOf(a.quota) - QUOTA_ORDER.indexOf(b.quota),
+                        );
+                        return (
+                          <div key={cat} className="flex items-baseline gap-2">
+                            <span className="w-20 shrink-0 font-medium text-foreground">{cat}</span>
+                            <span className="text-muted-foreground">
+                              {sorted.map((r) => `${r.quota} ${r.count}`).join(" · ")}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function MatchCard({ match, course }: { match: CollegeMatch; course: string }) {
   return (
     <div className="rounded-2xl border border-border/80 bg-card p-4 shadow-[var(--shadow-soft)]">
       <div className="flex items-start justify-between gap-3">
         <p className="text-lg font-bold text-primary">#{match.msOpenRank}</p>
-        <ChancesPopover match={match} />
+        <div className="flex items-center gap-1.5">
+          <CollegeInfoButton match={match} course={course} />
+          <ChancesPopover match={match} />
+        </div>
       </div>
       <div className="mt-3 min-w-0 space-y-1">
         <p className="break-words font-semibold text-foreground">{match.collegeName}</p>
@@ -568,7 +684,7 @@ export function FinderForm({ course }: FinderFormProps) {
             <>
               <div className="space-y-3 md:hidden">
                 {sortedMatches.map((match) => (
-                  <MatchCard key={`${match.collegeId}-${match.divisionId}`} match={match} />
+                  <MatchCard key={`${match.collegeId}-${match.divisionId}`} match={match} course={course} />
                 ))}
               </div>
 
@@ -604,7 +720,10 @@ export function FinderForm({ course }: FinderFormProps) {
                         </p>
                       </td>
                       <td className="px-4 py-4">
-                        <ChancesPopover match={match} />
+                        <div className="flex items-center gap-2">
+                          <CollegeInfoButton match={match} course={course} />
+                          <ChancesPopover match={match} />
+                        </div>
                       </td>
                     </tr>
                   ))}
