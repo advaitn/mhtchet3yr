@@ -1,18 +1,27 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import {
+  CANDIDATURE_TYPES,
+  DIVISION_GENDER_OPTIONS,
+  MINORITY_OPTIONS,
+  YES_NO,
+} from "@/lib/candidate-profile";
 import { CATEGORIES, COURSE_OPTIONS } from "@/lib/constants";
-import { parseCandidatureGroup } from "@/lib/candidature";
-import { cutoffStatsReady, findEligibleColleges } from "@/lib/merit-queries";
+import { findEligibleColleges } from "@/lib/merit-queries";
 
 const searchSchema = z.object({
   course: z.enum(COURSE_OPTIONS.map((option) => option.value) as ["LLB_3", "LLB_5"]),
   category: z.enum(CATEGORIES),
   percentile: z.number().min(0).max(100),
-  candidatureGroup: z.enum(["MS", "OMS"]),
-  differentlyAbled: z.boolean().optional(),
-  orphan: z.boolean().optional(),
-  exServicemen: z.boolean().optional(),
+  candidatureType: z.enum(CANDIDATURE_TYPES),
+  differentlyAbled: z.enum(YES_NO),
+  orphan: z.enum(YES_NO),
+  exServicemen: z.enum(YES_NO),
+  divisionGender: z.enum(
+    DIVISION_GENDER_OPTIONS.map((option) => option.value) as ["any", "coed", "women"],
+  ),
+  minority: z.enum(MINORITY_OPTIONS.map((option) => option.value)),
 });
 
 export async function POST(request: Request) {
@@ -27,24 +36,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const ready = await cutoffStatsReady();
-    if (!ready) {
-      return NextResponse.json(
-        { error: "Cutoff stats not initialized. Run db:refresh-stats." },
-        { status: 503 },
-      );
-    }
-
-    const filters = {
-      ...parsed.data,
-      candidatureGroup: parseCandidatureGroup(parsed.data.candidatureGroup),
-    };
-
-    const matches = await findEligibleColleges(filters);
+    const matches = await findEligibleColleges(parsed.data);
 
     return NextResponse.json({
       count: matches.length,
-      filters,
+      profile: parsed.data,
       matches,
     });
   } catch (error) {

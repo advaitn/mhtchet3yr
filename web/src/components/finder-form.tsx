@@ -1,11 +1,10 @@
 "use client";
 
-import { Loader2, Search, Info } from "lucide-react";
+import { Loader2, Search, Info, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   DataTable,
   DataTableBody,
@@ -17,10 +16,12 @@ import { Field, Input, Label, Select } from "@/components/ui/input";
 import { Alert } from "@/components/ui/page-shell";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import {
-  CANDIDATURE_OPTIONS,
-  CATEGORIES,
-  CATEGORY_LABELS,
-} from "@/lib/constants";
+  CANDIDATURE_TYPES,
+  DIVISION_GENDER_OPTIONS,
+  MINORITY_OPTIONS,
+  YES_NO,
+} from "@/lib/candidate-profile";
+import { CATEGORIES, CATEGORY_LABELS } from "@/lib/constants";
 import { collegeMatchesToCsv, downloadCsv } from "@/lib/export-csv";
 import { cn } from "@/lib/utils";
 import type { CollegeMatch } from "@/types/merit";
@@ -36,27 +37,100 @@ type SearchResponse = {
   error?: string;
 };
 
+const SORT_OPTIONS = [
+  { value: "recommended", label: "Recommended (rank + chances)" },
+  { value: "rank", label: "MS OPEN rank" },
+  { value: "chance-desc", label: "Best chances first" },
+  { value: "chance-asc", label: "Hardest first" },
+  { value: "ms-median-desc", label: "MS OPEN median (high → low)" },
+  { value: "name", label: "College name (A–Z)" },
+] as const;
+
+type SortOption = (typeof SORT_OPTIONS)[number]["value"];
+
+/**
+ * Composite score balancing college prestige (MS OPEN rank) and personal match chance.
+ * prestige: rank #1 = 100, rank #N = 0 (normalized inverted rank)
+ * score = average(chancePercent, prestige)
+ * Naturally surfaces colleges where you have a real shot AND they're well-ranked.
+ */
+function recommendedScore(match: CollegeMatch, total: number): number {
+  const prestige = (1 - (match.msOpenRank - 1) / Math.max(total - 1, 1)) * 100;
+  return (match.chancePercent + prestige) / 2;
+}
+
+function sortMatches(matches: CollegeMatch[], sortBy: SortOption): CollegeMatch[] {
+  const sorted = [...matches];
+  const total = matches.length;
+
+  switch (sortBy) {
+    case "recommended":
+      return sorted.sort(
+        (a, b) => recommendedScore(b, total) - recommendedScore(a, total),
+      );
+    case "chance-desc":
+      return sorted.sort(
+        (a, b) => b.chancePercent - a.chancePercent || a.msOpenRank - b.msOpenRank,
+      );
+    case "chance-asc":
+      return sorted.sort(
+        (a, b) => a.chancePercent - b.chancePercent || a.msOpenRank - b.msOpenRank,
+      );
+    case "ms-median-desc":
+      return sorted.sort(
+        (a, b) => b.msOpenMedian - a.msOpenMedian || a.msOpenRank - b.msOpenRank,
+      );
+    case "name":
+      return sorted.sort(
+        (a, b) =>
+          a.collegeName.localeCompare(b.collegeName) ||
+          a.divisionName.localeCompare(b.divisionName),
+      );
+    case "rank":
+    default:
+      return sorted.sort((a, b) => a.msOpenRank - b.msOpenRank);
+  }
+}
+
+const LABEL_CONFIG = {
+  safe: { label: "Safe", className: "bg-green-50 text-green-700 border-green-200" },
+  good: { label: "Good", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  borderline: { label: "Borderline", className: "bg-amber-50 text-amber-700 border-amber-200" },
+  reach: { label: "Reach", className: "bg-orange-50 text-orange-700 border-orange-200" },
+  unlikely: { label: "Unlikely", className: "bg-red-50 text-red-600 border-red-200" },
+  unknown: { label: "No data", className: "bg-stone-50 text-stone-400 border-stone-200" },
+} as const;
+
 export function FinderForm({ course }: FinderFormProps) {
   const [percentile, setPercentile] = useState("75");
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>("OPEN");
-  const [candidatureGroup, setCandidatureGroup] = useState<"MS" | "OMS">("MS");
-  const [differentlyAbled, setDifferentlyAbled] = useState(false);
-  const [orphan, setOrphan] = useState(false);
-  const [exServicemen, setExServicemen] = useState(false);
+  const [candidatureType, setCandidatureType] =
+    useState<(typeof CANDIDATURE_TYPES)[number]>("Maharashtra - Type A");
+  const [differentlyAbled, setDifferentlyAbled] = useState<(typeof YES_NO)[number]>("No");
+  const [orphan, setOrphan] = useState<(typeof YES_NO)[number]>("No");
+  const [exServicemen, setExServicemen] = useState<(typeof YES_NO)[number]>("No");
+  const [divisionGender, setDivisionGender] =
+    useState<(typeof DIVISION_GENDER_OPTIONS)[number]["value"]>("any");
+  const [minority, setMinority] =
+    useState<(typeof MINORITY_OPTIONS)[number]["value"]>("none");
   const [matches, setMatches] = useState<CollegeMatch[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [sortBy, setSortBy] = useState<SortOption>("recommended");
   const [isPending, startTransition] = useTransition();
 
   const courseLabel = course === "LLB_5" ? "5Y" : "3Y";
 
-  const summary = useMemo(() => {
-    if (!hasSearched) {
-      return null;
-    }
+  const sortedMatches = useMemo(
+    () => sortMatches(matches, sortBy),
+    [matches, sortBy],
+  );
 
+  const summary = useMemo(() => {
+    if (!hasSearched) return null;
     return {
-      allThree: matches.filter((match) => match.yearsQualified === 3).length,
+      safe: matches.filter((m) => m.matchLabel === "safe" || m.matchLabel === "good").length,
+      borderline: matches.filter((m) => m.matchLabel === "borderline").length,
       total: matches.length,
     };
   }, [hasSearched, matches]);
@@ -83,10 +157,12 @@ export function FinderForm({ course }: FinderFormProps) {
           course,
           category,
           percentile: parsedPercentile,
-          candidatureGroup,
+          candidatureType,
           differentlyAbled,
           orphan,
           exServicemen,
+          divisionGender,
+          minority,
         }),
       });
 
@@ -105,151 +181,183 @@ export function FinderForm({ course }: FinderFormProps) {
   }
 
   function handleExport() {
-    if (matches.length === 0) return;
+    if (sortedMatches.length === 0) return;
     downloadCsv(
-      `eligible-colleges-${courseLabel}-${category}-${candidatureGroup}.csv`,
-      collegeMatchesToCsv(matches),
+      `eligible-colleges-${courseLabel}-${category}.csv`,
+      collegeMatchesToCsv(sortedMatches),
     );
   }
 
   return (
     <div className="space-y-8">
       <Card className="overflow-hidden bg-white/90">
-        <CardHeader>
-          <h2 className="text-lg font-semibold text-foreground">Search parameters</h2>
-          <p className="text-sm text-muted-foreground">
-            MS includes Maharashtra Type A–E seats. OMS is filtered separately.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSearch} className="grid gap-6 md:grid-cols-2">
-            <Field>
-              <Label htmlFor="percentile">Your percentile</Label>
-              <Input
-                id="percentile"
-                type="number"
-                min="0"
-                max="100"
-                step="0.01"
-                value={percentile}
-                onChange={(event) => setPercentile(event.target.value)}
-                required
-              />
-            </Field>
+        <CardContent className="pt-6">
+          <form onSubmit={handleSearch} className="space-y-6">
 
-            <Field>
-              <Label htmlFor="category">Category</Label>
-              <Select
-                id="category"
-                value={category}
-                onChange={(event) =>
-                  setCategory(event.target.value as (typeof CATEGORIES)[number])
-                }
-              >
-                {CATEGORIES.map((item) => (
-                  <option key={item} value={item}>
-                    {CATEGORY_LABELS[item]} ({item})
-                  </option>
-                ))}
-              </Select>
-            </Field>
+            {/* Row 1: Score + Category */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field>
+                <Label htmlFor="percentile">Your MHT-CET percentile</Label>
+                <div className="relative">
+                  <Input
+                    id="percentile"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={percentile}
+                    onChange={(event) => setPercentile(event.target.value)}
+                    className="pr-12 text-lg font-semibold"
+                    required
+                  />
+                  <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-sm font-medium text-muted-foreground">
+                    %
+                  </span>
+                </div>
+              </Field>
 
-            <fieldset className="space-y-3 md:col-span-2">
-              <legend className="text-sm font-medium text-stone-700">Candidature</legend>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {CANDIDATURE_OPTIONS.map((option) => {
-                  const active = candidatureGroup === option.value;
+              <Field>
+                <Label htmlFor="category">Category</Label>
+                <Select
+                  id="category"
+                  value={category}
+                  onChange={(event) =>
+                    setCategory(event.target.value as (typeof CATEGORIES)[number])
+                  }
+                >
+                  {CATEGORIES.map((item) => (
+                    <option key={item} value={item}>
+                      {CATEGORY_LABELS[item]} — {item}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+
+            {/* Candidature type — pill row */}
+            <Field>
+              <Label>Candidature type</Label>
+              <div className="flex flex-wrap gap-2 pt-0.5">
+                {CANDIDATURE_TYPES.map((item) => {
+                  const short = item
+                    .replace("Maharashtra - ", "")
+                    .replace(" Migrant", "");
+                  const active = candidatureType === item;
                   return (
-                    <label
-                      key={option.value}
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setCandidatureType(item)}
                       className={cn(
-                        "cursor-pointer rounded-2xl border px-4 py-4 transition",
+                        "rounded-lg border px-3 py-1.5 text-sm font-medium transition",
                         active
-                          ? "border-primary bg-blue-50/70 shadow-sm"
-                          : "border-border bg-stone-50/50 hover:border-stone-300",
+                          ? "border-primary bg-primary text-white"
+                          : "border-border bg-white text-muted-foreground hover:border-primary/50 hover:text-foreground",
                       )}
                     >
-                      <input
-                        type="radio"
-                        name="candidatureGroup"
-                        value={option.value}
-                        checked={active}
-                        onChange={() => setCandidatureGroup(option.value)}
-                        className="sr-only"
-                      />
-                      <span className="block font-medium text-foreground">
-                        {option.label}
-                      </span>
-                      <span className="mt-1 block text-sm text-muted-foreground">
-                        {option.description}
-                      </span>
-                    </label>
+                      {short}
+                    </button>
                   );
                 })}
               </div>
-            </fieldset>
+            </Field>
 
-            <fieldset className="space-y-3 md:col-span-2">
-              <legend className="text-sm font-medium text-stone-700">
-                Additional filters
-              </legend>
-              <div className="flex flex-wrap gap-3">
-                {[
-                  {
-                    id: "ph",
-                    label: "Differently abled (PH)",
-                    checked: differentlyAbled,
-                    onChange: setDifferentlyAbled,
-                  },
-                  {
-                    id: "orphan",
-                    label: "Orphan",
-                    checked: orphan,
-                    onChange: setOrphan,
-                  },
-                  {
-                    id: "ex",
-                    label: "Ex-servicemen",
-                    checked: exServicemen,
-                    onChange: setExServicemen,
-                  },
-                ].map((item) => (
-                  <label
-                    key={item.id}
-                    className={cn(
-                      "inline-flex cursor-pointer items-center gap-2 rounded-full border px-4 py-2 text-sm transition",
-                      item.checked
-                        ? "border-primary bg-blue-50 text-primary"
-                        : "border-border bg-white text-muted-foreground hover:border-stone-300",
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={item.checked}
-                      onChange={(event) => item.onChange(event.target.checked)}
-                      className="sr-only"
-                    />
-                    {item.label}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
+            {/* Division + Minority */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field>
+                <Label>Division</Label>
+                <div className="flex gap-2 pt-0.5">
+                  {DIVISION_GENDER_OPTIONS.map((item) => {
+                    const active = divisionGender === item.value;
+                    return (
+                      <button
+                        key={item.value}
+                        type="button"
+                        onClick={() => setDivisionGender(item.value)}
+                        className={cn(
+                          "flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition",
+                          active
+                            ? "border-primary bg-primary text-white"
+                            : "border-border bg-white text-muted-foreground hover:border-primary/50 hover:text-foreground",
+                        )}
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
 
-            <div className="md:col-span-2">
-              <Button type="submit" disabled={isPending} size="lg">
-                {isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Searching...
-                  </>
-                ) : (
-                  <>
-                    <Search className="h-4 w-4" />
-                    Find eligible colleges
-                  </>
-                )}
-              </Button>
+              <Field>
+                <Label htmlFor="minority">Minority status</Label>
+                <Select
+                  id="minority"
+                  value={minority}
+                  onChange={(event) =>
+                    setMinority(
+                      event.target.value as (typeof MINORITY_OPTIONS)[number]["value"],
+                    )
+                  }
+                >
+                  {MINORITY_OPTIONS.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
             </div>
+
+            {/* Special status toggles */}
+            <Field>
+              <Label>Special status <span className="font-normal text-muted-foreground">(click to toggle)</span></Label>
+              <div className="flex flex-wrap gap-2 pt-0.5">
+                {(
+                  [
+                    { label: "Differently abled (PH)", value: differentlyAbled, set: setDifferentlyAbled },
+                    { label: "Orphan", value: orphan, set: setOrphan },
+                    { label: "Ex-servicemen / Defence", value: exServicemen, set: setExServicemen },
+                  ] as const
+                ).map(({ label, value, set }) => {
+                  const active = value === "Yes";
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => set(active ? "No" : "Yes")}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition",
+                        active
+                          ? "border-amber-400 bg-amber-50 text-amber-800"
+                          : "border-border bg-white text-muted-foreground hover:border-primary/50 hover:text-foreground",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "h-1.5 w-1.5 rounded-full",
+                          active ? "bg-amber-500" : "bg-stone-300",
+                        )}
+                      />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+
+            <Button type="submit" disabled={isPending} size="lg" className="w-full sm:w-auto">
+              {isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Searching…
+                </>
+              ) : (
+                <>
+                  <Search className="h-4 w-4" />
+                  Find colleges
+                </>
+              )}
+            </Button>
           </form>
         </CardContent>
       </Card>
@@ -259,161 +367,186 @@ export function FinderForm({ course }: FinderFormProps) {
       {summary ? (
         <section className="animate-fade-up space-y-5">
           <div className="grid gap-3 sm:grid-cols-3">
-            <StatCard label="Total matches" value={summary.total.toLocaleString()} />
+            <StatCard label="All colleges" value={summary.total.toLocaleString()} hint="MS OPEN rank order" />
             <StatCard
-              label="All 3 years"
-              value={summary.allThree.toLocaleString()}
-              hint="Consistent eligibility"
+              label="Safe / Good"
+              value={summary.safe.toLocaleString()}
+              hint="≥ 65% match score"
             />
             <StatCard
-              label="Candidature"
-              value={candidatureGroup}
-              hint={candidatureGroup === "MS" ? "Maharashtra seats" : "Outside Maharashtra"}
+              label="Borderline"
+              value={summary.borderline.toLocaleString()}
+              hint="45–65% match score"
             />
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold text-foreground">Results</h2>
               <p className="text-sm text-muted-foreground">
-                Ranked by qualification consistency and average median. Hover on percentages for details.
+                {sortBy === "recommended"
+                  ? "Balances college prestige (MS OPEN rank) with your match score equally."
+                  : sortBy === "rank"
+                    ? "Fixed MS OPEN ranking order — prestige only, ignores your chances."
+                    : `Sorted by ${SORT_OPTIONS.find((option) => option.value === sortBy)?.label.toLowerCase()}.`}
               </p>
             </div>
-            <ExportButton onClick={handleExport} disabled={matches.length === 0} />
+            <div className="flex flex-wrap items-end gap-3">
+              <Field className="min-w-[200px]">
+                <Label htmlFor="sort">Sort by</Label>
+                <Select
+                  id="sort"
+                  value={sortBy}
+                  onChange={(event) => setSortBy(event.target.value as SortOption)}
+                >
+                  {SORT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <ExportButton onClick={handleExport} disabled={sortedMatches.length === 0} />
+            </div>
           </div>
 
           {matches.length === 0 ? (
-            <Alert>
-              No colleges found. Try a lower percentile or switch candidature type.
-            </Alert>
+            <Alert>No colleges found for this course.</Alert>
           ) : (
             <DataTable>
               <DataTableHead>
                 <tr>
-                  <th className="px-4 py-3 w-12">Rank</th>
+                  <th className="w-12 px-4 py-3">Rank</th>
                   <th className="px-4 py-3">College & Division</th>
                   <th className="px-4 py-3">Your Chances</th>
                 </tr>
               </DataTableHead>
               <DataTableBody>
-                {matches.map((match) => {
-                  // Calculate overall chance: percentage of years where user qualifies
-                  const chancePercent = Math.round(
-                    (match.yearsQualified / match.years.length) * 100
-                  );
-                  
-                  // Get the average cutoff across all years
-                  const avgCutoff = match.years.reduce((sum, y) => sum + y.cutoff, 0) / match.years.length;
+                {sortedMatches.map((match) => {
+                  const labelCfg = LABEL_CONFIG[match.matchLabel];
+                  const hasAnyData = match.years.some((y) => y.hasData);
 
                   return (
                     <tr
                       key={`${match.collegeId}-${match.divisionId}`}
-                      className="transition hover:bg-gray-50"
+                      className="transition hover:bg-stone-50/80"
                     >
-                      <td className="px-4 py-4 font-bold text-primary text-lg">
+                      <td className="px-4 py-4 text-lg font-bold text-primary">
                         #{match.msOpenRank}
                       </td>
                       <td className="px-4 py-4">
-                        <div className="space-y-1">
-                          <p className="font-semibold text-foreground">
-                            {match.collegeName}
-                          </p>
-                          <div className="space-y-0.5">
-                            <p className="text-xs text-muted-foreground">
-                              {match.divisionName}
-                            </p>
-                            <p className="text-xs font-medium text-primary/70">
-                              {match.universityName}
-                            </p>
-                          </div>
-                        </div>
+                        <p className="font-semibold text-foreground">{match.collegeName}</p>
+                        <p className="text-xs text-muted-foreground">{match.divisionName}</p>
+                        <p className="text-xs text-primary/70">{match.universityName}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          MS OPEN median {match.msOpenMedian.toFixed(1)}%
+                        </p>
                       </td>
                       <td className="px-4 py-4">
                         <Popover>
                           <PopoverTrigger asChild>
                             <button
-                              className={cn(
-                                "cursor-help inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-bold text-xl transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
-                                chancePercent === 100
-                                  ? "text-success"
-                                  : chancePercent >= 50
-                                    ? "text-warning"
-                                    : "text-muted-foreground",
-                              )}
+                              type="button"
+                              className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold transition hover:opacity-80"
+                              style={{ backgroundColor: "transparent" }}
                             >
-                              {chancePercent}%
-                              <Info className="h-4 w-4 opacity-50" />
+                              <span
+                                className={cn(
+                                  "inline-block rounded-md border px-2 py-0.5 text-xs font-bold uppercase tracking-wide",
+                                  labelCfg.className,
+                                )}
+                              >
+                                {labelCfg.label}
+                              </span>
+                              {hasAnyData && (
+                                <span className="text-base font-bold text-foreground">
+                                  {match.chancePercent}%
+                                </span>
+                              )}
+                              {match.trend === "improving" && (
+                                <TrendingUp className="h-3.5 w-3.5 text-green-600" />
+                              )}
+                              {match.trend === "declining" && (
+                                <TrendingDown className="h-3.5 w-3.5 text-red-500" />
+                              )}
+                              {match.trend === "stable" && (
+                                <Minus className="h-3.5 w-3.5 text-muted-foreground" />
+                              )}
+                              <Info className="h-3.5 w-3.5 text-muted-foreground opacity-50" />
                             </button>
                           </PopoverTrigger>
-                          <PopoverContent>
-                            <div className="space-y-3 w-72">
-                              <div>
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">
-                                  Your percentile
-                                </p>
-                                <p className="text-lg font-bold text-foreground">
-                                  {percentile}%
-                                </p>
-                              </div>
-                              <div className="border-t border-border pt-3">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">
-                                  Qualification consistency
-                                </p>
-                                <div className="mt-2 space-y-1">
+                          <PopoverContent className="p-0">
+                            {!hasAnyData ? (
+                              <p className="p-4 text-sm text-muted-foreground">
+                                No waitlist data matches your profile at this college.
+                              </p>
+                            ) : (
+                              <div className="text-sm">
+                                <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                                  <div>
+                                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                      Match score
+                                    </p>
+                                    <p className="text-3xl font-bold leading-tight">
+                                      {match.chancePercent}%
+                                    </p>
+                                  </div>
+                                  <span
+                                    className={cn(
+                                      "rounded-md border px-2 py-1 text-xs font-bold uppercase tracking-wide",
+                                      labelCfg.className,
+                                    )}
+                                  >
+                                    {labelCfg.label}
+                                  </span>
+                                </div>
+
+                                <div className="px-4 py-2">
                                   {match.years.map((year) => (
-                                    <div key={year.year} className="flex items-center justify-between text-sm">
+                                    <div
+                                      key={year.year}
+                                      className="flex items-baseline justify-between py-1.5"
+                                    >
                                       <span className="text-muted-foreground">{year.year}</span>
-                                      <div className="flex items-center gap-2">
-                                        <span className="font-medium text-foreground">
-                                          {year.cutoff.toFixed(1)}%
+                                      {!year.hasData ? (
+                                        <span className="text-xs text-muted-foreground/50">
+                                          no data
                                         </span>
-                                        <span className={cn(
-                                          "text-xs px-2 py-0.5 rounded",
-                                          year.qualifies
-                                            ? "bg-green-100 text-green-800"
-                                            : "bg-red-100 text-red-800"
-                                        )}>
-                                          {year.qualifies ? "✓ Qualify" : "✗ Below"}
+                                      ) : (
+                                        <span className="text-right">
+                                          <span className="font-semibold">{year.yearProb}%</span>
+                                          <span className="ml-2 text-xs text-muted-foreground">
+                                            n={year.waitlistCount} · med {year.median.toFixed(1)}%
+                                          </span>
                                         </span>
-                                      </div>
+                                      )}
                                     </div>
                                   ))}
                                 </div>
-                                <p className="mt-2 text-xs font-medium text-foreground">
-                                  Overall: {match.yearsQualified}/{match.years.length} years
-                                </p>
+
+                                {match.trend !== "unknown" && (
+                                  <div className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+                                    Trend:{" "}
+                                    <span
+                                      className={cn(
+                                        "font-medium",
+                                        match.trend === "improving"
+                                          ? "text-green-600"
+                                          : match.trend === "declining"
+                                            ? "text-red-500"
+                                            : "text-foreground",
+                                      )}
+                                    >
+                                      {match.trend === "improving"
+                                        ? "getting easier ↑"
+                                        : match.trend === "declining"
+                                          ? "getting harder ↓"
+                                          : "stable →"}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
-                              <div className="border-t border-border pt-3">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">
-                                  Average cutoff
-                                </p>
-                                <p className="text-lg font-bold text-foreground">
-                                  {avgCutoff.toFixed(1)}%
-                                </p>
-                              </div>
-                              <div className="border-t border-border pt-3">
-                                <p className="text-xs font-semibold uppercase text-muted-foreground">
-                                  Median percentiles
-                                </p>
-                                <p className="text-sm text-foreground">
-                                  Average: <span className="font-bold">{match.avgMedian.toFixed(1)}%</span>
-                                </p>
-                                <p className="text-sm text-foreground">
-                                  Best: <span className="font-bold">{match.bestMedian.toFixed(1)}%</span>
-                                </p>
-                              </div>
-                              <div className="border-t border-border pt-3">
-                                <p className="text-xs font-medium text-muted-foreground">
-                                  {chancePercent === 100
-                                    ? "✓ You qualify in all available years. Very safe option."
-                                    : chancePercent >= 67
-                                      ? "✓ You qualify in most years. Safe option."
-                                      : chancePercent >= 34
-                                        ? "◐ You qualify in some years. Moderate option."
-                                        : "✗ You qualify in very few years. Risky option."}
-                                </p>
-                              </div>
-                            </div>
+                            )}
                           </PopoverContent>
                         </Popover>
                       </td>

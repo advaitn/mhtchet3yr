@@ -10,45 +10,53 @@ function escapeCsv(value: string | number): string {
 
 export function collegeMatchesToCsv(matches: CollegeMatch[]): string {
   const headers = [
+    "MS OPEN Rank",
+    "MS OPEN Median %",
     "College",
     "Division",
     "University",
-    "Years Qualified",
-    "Avg Median %",
-    "2023 Cutoff %",
-    "2023 Median %",
-    "2023 Qualifies",
-    "2024 Cutoff %",
-    "2024 Median %",
-    "2024 Qualifies",
-    "2025 Cutoff %",
-    "2025 Median %",
-    "2025 Qualifies",
+    "Match",
+    "Chance %",
+    "Trend",
+    "Avg Pool Median %",
+    "2023 Chance %",
+    "2023 Pool Median %",
+    "2023 Cohort Size",
+    "2024 Chance %",
+    "2024 Pool Median %",
+    "2024 Cohort Size",
+    "2025 Chance %",
+    "2025 Pool Median %",
+    "2025 Cohort Size",
   ];
 
   const rows = matches.map((match) => {
-    const byYear = Object.fromEntries(match.years.map((year) => [year.year, year]));
+    const byYear = Object.fromEntries(match.years.map((y) => [y.year, y]));
 
     return [
+      match.msOpenRank,
+      match.msOpenMedian.toFixed(2),
       match.collegeName,
       match.divisionName,
       match.universityName,
-      match.yearsQualified,
-      match.avgMedian.toFixed(2),
-      byYear[2023]?.cutoff.toFixed(2) ?? "",
-      byYear[2023]?.median.toFixed(2) ?? "",
-      byYear[2023]?.qualifies ? "Yes" : "No",
-      byYear[2024]?.cutoff.toFixed(2) ?? "",
-      byYear[2024]?.median.toFixed(2) ?? "",
-      byYear[2024]?.qualifies ? "Yes" : "No",
-      byYear[2025]?.cutoff.toFixed(2) ?? "",
-      byYear[2025]?.median.toFixed(2) ?? "",
-      byYear[2025]?.qualifies ? "Yes" : "No",
+      match.matchLabel,
+      match.chancePercent,
+      match.trend,
+      match.avgMedian > 0 ? match.avgMedian.toFixed(2) : "",
+      byYear[2023]?.hasData ? byYear[2023].yearProb : "",
+      byYear[2023]?.hasData ? byYear[2023].median.toFixed(2) : "",
+      byYear[2023]?.hasData ? byYear[2023].waitlistCount : "",
+      byYear[2024]?.hasData ? byYear[2024].yearProb : "",
+      byYear[2024]?.hasData ? byYear[2024].median.toFixed(2) : "",
+      byYear[2024]?.hasData ? byYear[2024].waitlistCount : "",
+      byYear[2025]?.hasData ? byYear[2025].yearProb : "",
+      byYear[2025]?.hasData ? byYear[2025].median.toFixed(2) : "",
+      byYear[2025]?.hasData ? byYear[2025].waitlistCount : "",
     ];
   });
 
   return [headers, ...rows]
-    .map((row) => row.map((cell) => escapeCsv(cell)).join(","))
+    .map((row) => row.map((cell) => escapeCsv(cell as string | number)).join(","))
     .join("\n");
 }
 
@@ -99,6 +107,6 @@ export function rankedCollegesToCsv(
   ]);
 
   return [headers, ...data]
-    .map((row) => row.map((cell) => escapeCsv(cell)).join(","))
+    .map((row) => row.map((cell) => escapeCsv(cell as string | number)).join(","))
     .join("\n");
 }

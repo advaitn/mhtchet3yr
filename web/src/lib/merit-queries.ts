@@ -2,15 +2,22 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { Prisma } from "@/generated/prisma/client";
-import { candidatureSqlCondition } from "@/lib/candidature";
+import { MIN_COHORT_SIZE } from "@/lib/candidate-profile";
+import { toCandidatureGroup, type CandidatureGroup } from "@/lib/candidature";
 import type { Category } from "@/lib/constants";
+import { YEARS } from "@/lib/constants";
+import { buildProfileSql } from "@/lib/profile-sql";
 import { prisma } from "@/lib/prisma";
 import type {
+  CandidateProfile,
   CollegeMatch,
-  FinderFilters,
+  MatchLabel,
   RankedCollege,
+  Trend,
   YearCutoff,
 } from "@/types/merit";
+
+export const ARBITRATION_YEAR_COUNT = YEARS.length;
 
 type CutoffRow = {
   course: string;
@@ -28,14 +35,15 @@ type CutoffRow = {
   waitlist_count: number;
 };
 
-type LiveCutoffRow = {
+type ProfileCutoffRow = {
   year: number;
   college_id: string;
   college_name: string;
   division_id: string;
   division_name: string;
   university_name: string;
-  cutoff_percentile: Prisma.Decimal;
+  /** cume_dist: fraction of cohort with merit_percentile <= user's percentile (0–1). */
+  year_prob: Prisma.Decimal;
   top_percentile: Prisma.Decimal;
   median_percentile: Prisma.Decimal;
   waitlist_count: number;
@@ -49,175 +57,189 @@ function shortCollegeName(name: string): string {
   return name.includes(" - ") ? name.split(" - ").slice(1).join(" - ") : name;
 }
 
-function groupKey(row: {
-  collegeId: string;
-  divisionId: string;
-}): string {
-  return `${row.collegeId}|${row.divisionId}`;
+function groupKey(collegeId: string, divisionId: string): string {
+  return `${collegeId}|${divisionId}`;
 }
 
-function buildYearCutoff(
-  row: {
-    year: number;
-    cutoff_percentile: Prisma.Decimal;
-    median_percentile: Prisma.Decimal;
-    top_percentile: Prisma.Decimal;
-    waitlist_count: number;
-  },
-  userPercentile: number,
-): YearCutoff {
-  const cutoff = toNumber(row.cutoff_percentile);
+/**
+ * Calibrate the raw cume_dist value into an admission probability.
+ *
+ * The waitlist is the full applicant pool, not just admitted students.
+ * Typically the top ~25% of each college's pool get seats, meaning
+ * a cume_dist of 0.75 is the 50/50 boundary.
+ * We use a linear mapping centered at 0.75 with ±0.15 spread:
+ *   0.60 → 0%   (clearly below cutoff zone)
+ *   0.75 → 50%  (right at the margin)
+ *   0.90 → 100% (solidly in the top tier)
+ */
+export function calibrateYearProb(rawCumeDist: number): number {
+  const CUTOFF = 0.75;
+  const SPREAD = 0.15;
+  const calibrated = 0.5 + (rawCumeDist - CUTOFF) / (2 * SPREAD);
+  return Math.round(Math.min(1, Math.max(0, calibrated)) * 100);
+}
+
+export function toMatchLabel(chancePercent: number): MatchLabel {
+  if (chancePercent >= 85) return "safe";
+  if (chancePercent >= 65) return "good";
+  if (chancePercent >= 45) return "borderline";
+  if (chancePercent >= 20) return "reach";
+  return "unlikely";
+}
+
+function computeTrend(years: YearCutoff[]): Trend {
+  const dataPoints = years
+    .filter((y) => y.hasData && y.yearProb !== null)
+    .sort((a, b) => a.year - b.year);
+
+  if (dataPoints.length < 2) return "unknown";
+
+  const delta = dataPoints[dataPoints.length - 1].yearProb! - dataPoints[0].yearProb!;
+  if (delta > 10) return "improving";
+  if (delta < -10) return "declining";
+  return "stable";
+}
+
+function buildYearCutoff(row: ProfileCutoffRow): YearCutoff {
   return {
     year: row.year,
-    cutoff,
+    yearProb: calibrateYearProb(toNumber(row.year_prob)),
     median: toNumber(row.median_percentile),
     top: toNumber(row.top_percentile),
     waitlistCount: row.waitlist_count,
-    qualifies: userPercentile >= cutoff,
+    hasData: true,
   };
 }
 
-function aggregateMatches(
-  rows: Array<
-    LiveCutoffRow & {
-      college_id: string;
-      college_name: string;
-      division_id: string;
-      division_name: string;
-      university_name: string;
+function emptyYearCutoff(year: number): YearCutoff {
+  return {
+    year,
+    yearProb: null,
+    median: 0,
+    top: 0,
+    waitlistCount: 0,
+    hasData: false,
+  };
+}
+
+function mergeCutoffRows(...sources: ProfileCutoffRow[][]): ProfileCutoffRow[] {
+  const byKey = new Map<string, ProfileCutoffRow>();
+
+  for (const rows of sources) {
+    for (const row of rows) {
+      const key = `${row.year}|${row.college_id}|${row.division_id}`;
+      if (!byKey.has(key)) {
+        byKey.set(key, row);
+      }
     }
-  >,
-  userPercentile: number,
-  msOpenRanks?: Map<string, number>,
-): CollegeMatch[] {
-  const grouped = new Map<string, CollegeMatch>();
+  }
+
+  return [...byKey.values()];
+}
+
+function buildArbitratedYears(rows: ProfileCutoffRow[]): YearCutoff[] {
+  const byYear = new Map(rows.map((row) => [row.year, buildYearCutoff(row)]));
+  return YEARS.map((year) => byYear.get(year) ?? emptyYearCutoff(year));
+}
+
+function summarizeYears(years: YearCutoff[]): Pick<
+  CollegeMatch,
+  "years" | "chancePercent" | "matchLabel" | "trend" | "avgMedian" | "bestMedian"
+> {
+  const yearsWithData = years.filter((y) => y.hasData && y.yearProb !== null);
+  const medians = yearsWithData.map((y) => y.median);
+
+  const chancePercent =
+    yearsWithData.length > 0
+      ? Math.round(
+          yearsWithData.reduce((sum, y) => sum + y.yearProb!, 0) / yearsWithData.length,
+        )
+      : 0;
+
+  return {
+    years,
+    chancePercent,
+    matchLabel: yearsWithData.length === 0 ? "unknown" : toMatchLabel(chancePercent),
+    trend: computeTrend(years),
+    avgMedian:
+      medians.length > 0 ? medians.reduce((sum, v) => sum + v, 0) / medians.length : 0,
+    bestMedian: medians.length > 0 ? Math.max(...medians) : 0,
+  };
+}
+
+type MsOpenRankRow = {
+  college_id: string;
+  college_name: string;
+  division_id: string;
+  division_name: string;
+  university_name: string;
+  ms_open_median: Prisma.Decimal;
+};
+
+async function getMsOpenRankList(course: CandidateProfile["course"]): Promise<MsOpenRankRow[]> {
+  return prisma.$queryRaw<MsOpenRankRow[]>`
+    SELECT
+      college_id,
+      MIN(college_name) AS college_name,
+      division_id,
+      MIN(division_name) AS division_name,
+      MIN(university_name) AS university_name,
+      AVG(median_percentile) AS ms_open_median
+    FROM college_cutoff_stats
+    WHERE course = ${course}::"Course"
+      AND category = 'OPEN'
+      AND candidature_group = 'MS'
+      AND waitlist_count >= ${MIN_COHORT_SIZE}
+    GROUP BY college_id, division_id
+    ORDER BY ms_open_median DESC, MIN(college_name) ASC
+  `;
+}
+
+function aggregateProfileByDivision(
+  rows: ProfileCutoffRow[],
+): Map<
+  string,
+  Pick<CollegeMatch, "years" | "chancePercent" | "matchLabel" | "trend" | "avgMedian" | "bestMedian">
+> {
+  const grouped = new Map<string, ProfileCutoffRow[]>();
 
   for (const row of rows) {
-    const key = groupKey({ collegeId: row.college_id, divisionId: row.division_id });
-    const yearData = buildYearCutoff(row, userPercentile);
-
+    const key = groupKey(row.college_id, row.division_id);
     const existing = grouped.get(key);
-    if (!existing) {
-      grouped.set(key, {
-        collegeId: row.college_id,
-        collegeName: shortCollegeName(row.college_name),
-        divisionId: row.division_id,
-        divisionName: row.division_name,
-        universityName: row.university_name,
-        years: [yearData],
-        yearsQualified: yearData.qualifies ? 1 : 0,
-        avgMedian: yearData.median,
-        bestMedian: yearData.median,
-        msOpenRank: msOpenRanks?.get(key) ?? 999999,
-      });
-      continue;
-    }
-
-    existing.years.push(yearData);
-    if (yearData.qualifies) {
-      existing.yearsQualified += 1;
+    if (existing) {
+      existing.push(row);
+    } else {
+      grouped.set(key, [row]);
     }
   }
 
-  for (const match of grouped.values()) {
-    match.years.sort((a, b) => a.year - b.year);
-    const medians = match.years.map((year) => year.median);
-    match.avgMedian =
-      medians.reduce((sum, value) => sum + value, 0) / medians.length;
-    match.bestMedian = Math.max(...medians);
+  const result = new Map<
+    string,
+    Pick<CollegeMatch, "years" | "chancePercent" | "matchLabel" | "trend" | "avgMedian" | "bestMedian">
+  >();
+
+  for (const [key, divisionRows] of grouped) {
+    result.set(key, summarizeYears(buildArbitratedYears(divisionRows)));
   }
 
-  return [...grouped.values()].sort((a, b) => a.msOpenRank - b.msOpenRank);
+  return result;
 }
 
-function hasSpecialFilters(filters: FinderFilters): boolean {
-  return Boolean(
-    filters.differentlyAbled || filters.orphan || filters.exServicemen,
-  );
-}
-
-async function findFromMaterializedView(
-  filters: FinderFilters,
-): Promise<CollegeMatch[]> {
-  // Fetch MS OPEN rankings (for fixed ranking across all configurations)
-  const msOpenRawRows = await prisma.$queryRaw<Array<{ college_id: string; division_id: string }>>`
-    SELECT college_id, division_id
-    FROM college_cutoff_stats
-    WHERE course = ${filters.course}::"Course"
-      AND category = 'OPEN'
-      AND candidature_group = 'MS'
-    GROUP BY college_id, division_id
-    ORDER BY AVG(median_percentile) DESC
-  `;
-
-  const msOpenRanks = new Map<string, number>();
-  msOpenRawRows.forEach((row, index) => {
-    msOpenRanks.set(groupKey({ collegeId: row.college_id, divisionId: row.division_id }), index + 1);
+async function fetchProfileCutoffs(
+  profile: CandidateProfile,
+  options: {
+    years?: readonly number[];
+    includeDemographics?: boolean;
+  } = {},
+): Promise<ProfileCutoffRow[]> {
+  const years = options.years ?? YEARS;
+  const profileSql = buildProfileSql(profile, 3, "me", {
+    includeDemographics: options.includeDemographics ?? true,
   });
+  const yearFilterIndex = profileSql.params.length + 3;
+  const minCohortParam = profileSql.params.length + 4;
 
-  const rows = await prisma.$queryRaw<CutoffRow[]>`
-    SELECT *
-    FROM college_cutoff_stats
-    WHERE course = ${filters.course}::"Course"
-      AND category = ${filters.category}
-      AND candidature_group = ${filters.candidatureGroup}
-      AND cutoff_percentile <= ${filters.percentile}
-    ORDER BY median_percentile DESC, college_name ASC
-  `;
-
-  return aggregateMatches(
-    rows.map((row) => ({
-      year: row.year,
-      college_id: row.college_id,
-      college_name: row.college_name,
-      division_id: row.division_id,
-      division_name: row.division_name,
-      university_name: row.university_name,
-      cutoff_percentile: row.cutoff_percentile,
-      top_percentile: row.top_percentile,
-      median_percentile: row.median_percentile,
-      waitlist_count: row.waitlist_count,
-    })),
-    filters.percentile,
-    msOpenRanks,
-  );
-}
-
-async function findFromLiveAggregation(
-  filters: FinderFilters,
-): Promise<CollegeMatch[]> {
-  // Fetch MS OPEN rankings for the reference ordering
-  const msOpenRows = await prisma.$queryRaw<Array<{ college_id: string; division_id: string }>>`
-    SELECT college_id, division_id
-    FROM college_cutoff_stats
-    WHERE course = ${filters.course}::"Course"
-      AND category = 'OPEN'
-      AND candidature_group = 'MS'
-    GROUP BY college_id, division_id
-    ORDER BY AVG(median_percentile) DESC
-  `;
-
-  const msOpenRanks = new Map<string, number>();
-  msOpenRows.forEach((row, index) => {
-    msOpenRanks.set(groupKey({ collegeId: row.college_id, divisionId: row.division_id }), index + 1);
-  });
-
-  const candidatureCondition = candidatureSqlCondition(filters.candidatureGroup);
-  const specialConditions: string[] = [];
-
-  if (filters.differentlyAbled) {
-    specialConditions.push("me.differently_abled_ph = 'Yes'");
-  }
-  if (filters.orphan) {
-    specialConditions.push("me.orphan = 'Yes'");
-  }
-  if (filters.exServicemen) {
-    specialConditions.push("me.ex_servicemen = 'Yes'");
-  }
-
-  const specialSql =
-    specialConditions.length > 0 ? `AND ${specialConditions.join(" AND ")}` : "";
-
+  // $1 = course, $2 = user percentile (for cume_dist), $3..N = profile filters
   const query = `
     SELECT
       ac.year,
@@ -226,16 +248,15 @@ async function findFromLiveAggregation(
       me.division_id,
       me.division_name,
       me.university_name,
-      MIN(me.merit_percentile) AS cutoff_percentile,
+      COUNT(*) FILTER (WHERE me.merit_percentile <= $2::float)::float / COUNT(*) AS year_prob,
       MAX(me.merit_percentile) AS top_percentile,
       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY me.merit_percentile) AS median_percentile,
       COUNT(*)::int AS waitlist_count
     FROM merit_entries me
     INNER JOIN admission_cycles ac ON ac.id = me.cycle_id
     WHERE ac.course = $1::"Course"
-      AND me.category = $2
-      AND ${candidatureCondition}
-      ${specialSql}
+      AND ac.year = ANY($${yearFilterIndex}::int[])
+      AND ${profileSql.where.join("\n      AND ")}
     GROUP BY
       ac.year,
       me.college_id,
@@ -243,33 +264,62 @@ async function findFromLiveAggregation(
       me.division_id,
       me.division_name,
       me.university_name
-    HAVING MIN(me.merit_percentile) <= $3
-    ORDER BY median_percentile DESC, me.college_name ASC
+    HAVING COUNT(*) >= $${minCohortParam}
   `;
 
-  const rows = await prisma.$queryRawUnsafe<LiveCutoffRow[]>(
+  return prisma.$queryRawUnsafe<ProfileCutoffRow[]>(
     query,
-    filters.course,
-    filters.category,
-    filters.percentile,
+    profile.course,
+    profile.percentile,
+    ...profileSql.params,
+    years,
+    MIN_COHORT_SIZE,
   );
-
-  return aggregateMatches(rows, filters.percentile, msOpenRanks);
 }
 
 export async function findEligibleColleges(
-  filters: FinderFilters,
+  profile: CandidateProfile,
 ): Promise<CollegeMatch[]> {
-  if (hasSpecialFilters(filters)) {
-    return findFromLiveAggregation(filters);
-  }
-  return findFromMaterializedView(filters);
+  const legacyYears = YEARS.filter((year) => year < 2025);
+  const strictYears = [2025] as const;
+
+  const [rankList, strictRows, relaxedRows] = await Promise.all([
+    getMsOpenRankList(profile.course),
+    fetchProfileCutoffs(profile, { years: strictYears, includeDemographics: true }),
+    fetchProfileCutoffs(profile, { years: legacyYears, includeDemographics: false }),
+  ]);
+
+  const mergedRows = mergeCutoffRows(strictRows, relaxedRows);
+  const profileByDivision = aggregateProfileByDivision(mergedRows);
+
+  const emptyProfile = summarizeYears(YEARS.map((year) => emptyYearCutoff(year)));
+
+  return rankList.map((row, index) => {
+    const key = groupKey(row.college_id, row.division_id);
+    const profileData = profileByDivision.get(key) ?? emptyProfile;
+
+    return {
+      collegeId: row.college_id,
+      collegeName: shortCollegeName(row.college_name),
+      divisionId: row.division_id,
+      divisionName: row.division_name,
+      universityName: row.university_name,
+      years: profileData.years,
+      chancePercent: profileData.chancePercent,
+      matchLabel: profileData.matchLabel,
+      trend: profileData.trend,
+      avgMedian: profileData.avgMedian,
+      bestMedian: profileData.bestMedian,
+      msOpenRank: index + 1,
+      msOpenMedian: toNumber(row.ms_open_median),
+    };
+  });
 }
 
 export async function getTopColleges(params: {
-  course: FinderFilters["course"];
+  course: CandidateProfile["course"];
   category: Category;
-  candidatureGroup: FinderFilters["candidatureGroup"];
+  candidatureGroup: CandidatureGroup;
   year?: number;
   limit?: number;
 }): Promise<RankedCollege[]> {
@@ -283,7 +333,7 @@ export async function getTopColleges(params: {
         AND category = ${params.category}
         AND candidature_group = ${params.candidatureGroup}
         AND year = ${params.year}
-        AND waitlist_count >= 3
+        AND waitlist_count >= ${MIN_COHORT_SIZE}
       ORDER BY median_percentile DESC, top_percentile DESC
       LIMIT ${limit}
     `;
@@ -318,10 +368,10 @@ export async function getTopColleges(params: {
   >`
     SELECT
       college_id,
-      college_name,
+      MIN(college_name) AS college_name,
       division_id,
-      division_name,
-      university_name,
+      MIN(division_name) AS division_name,
+      MIN(university_name) AS university_name,
       AVG(median_percentile) AS avg_median,
       AVG(cutoff_percentile) AS avg_cutoff,
       MAX(top_percentile) AS max_top,
@@ -331,8 +381,8 @@ export async function getTopColleges(params: {
     WHERE course = ${params.course}::"Course"
       AND category = ${params.category}
       AND candidature_group = ${params.candidatureGroup}
-      AND waitlist_count >= 3
-    GROUP BY college_id, college_name, division_id, division_name, university_name
+      AND waitlist_count >= ${MIN_COHORT_SIZE}
+    GROUP BY college_id, division_id
     HAVING COUNT(*) >= 2
     ORDER BY avg_median DESC, max_top DESC
     LIMIT ${limit}
