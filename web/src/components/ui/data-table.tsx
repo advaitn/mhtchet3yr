@@ -14,11 +14,11 @@ export function DataTable({ children, className }: DataTableProps) {
   return (
     <div
       className={cn(
-        "table-scroll overflow-x-auto rounded-[1.25rem] border border-border/80 bg-card shadow-[var(--shadow-soft)]",
+        "table-scroll w-full max-w-full min-w-0 overflow-x-auto rounded-[1.25rem] border border-border/80 bg-card shadow-[var(--shadow-soft)]",
         className,
       )}
     >
-      <table className="min-w-full text-left text-sm">{children}</table>
+      <table className="w-full min-w-[640px] text-left text-sm">{children}</table>
     </div>
   );
 }

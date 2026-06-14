@@ -101,6 +101,131 @@ const LABEL_CONFIG = {
   unknown: { label: "No data", className: "bg-stone-50 text-stone-400 border-stone-200" },
 } as const;
 
+function ChancesPopover({ match }: { match: CollegeMatch }) {
+  const labelCfg = LABEL_CONFIG[match.matchLabel];
+  const hasAnyData = match.years.some((y) => y.hasData);
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-semibold transition hover:opacity-80 sm:gap-2 sm:px-3"
+        >
+          <span
+            className={cn(
+              "inline-block rounded-md border px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide sm:text-xs",
+              labelCfg.className,
+            )}
+          >
+            {labelCfg.label}
+          </span>
+          {hasAnyData && (
+            <span className="text-sm font-bold text-foreground sm:text-base">
+              {match.chancePercent}%
+            </span>
+          )}
+          {match.trend === "improving" && (
+            <TrendingUp className="h-3.5 w-3.5 shrink-0 text-green-600" />
+          )}
+          {match.trend === "declining" && (
+            <TrendingDown className="h-3.5 w-3.5 shrink-0 text-red-500" />
+          )}
+          {match.trend === "stable" && (
+            <Minus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          )}
+          <Info className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-50" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[min(18rem,calc(100vw-2rem))] p-0">
+        {!hasAnyData ? (
+          <p className="p-4 text-sm text-muted-foreground">
+            No waitlist data matches your profile at this college.
+          </p>
+        ) : (
+          <div className="text-sm">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Match score
+                </p>
+                <p className="text-3xl font-bold leading-tight">{match.chancePercent}%</p>
+              </div>
+              <span
+                className={cn(
+                  "rounded-md border px-2 py-1 text-xs font-bold uppercase tracking-wide",
+                  labelCfg.className,
+                )}
+              >
+                {labelCfg.label}
+              </span>
+            </div>
+
+            <div className="px-4 py-2">
+              {match.years.map((year) => (
+                <div key={year.year} className="flex items-baseline justify-between gap-3 py-1.5">
+                  <span className="shrink-0 text-muted-foreground">{year.year}</span>
+                  {!year.hasData ? (
+                    <span className="text-xs text-muted-foreground/50">no data</span>
+                  ) : (
+                    <span className="min-w-0 text-right">
+                      <span className="font-semibold">{year.yearProb}%</span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        n={year.waitlistCount} · med {year.median.toFixed(1)}%
+                      </span>
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {match.trend !== "unknown" && (
+              <div className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+                Trend:{" "}
+                <span
+                  className={cn(
+                    "font-medium",
+                    match.trend === "improving"
+                      ? "text-green-600"
+                      : match.trend === "declining"
+                        ? "text-red-500"
+                        : "text-foreground",
+                  )}
+                >
+                  {match.trend === "improving"
+                    ? "getting easier ↑"
+                    : match.trend === "declining"
+                      ? "getting harder ↓"
+                      : "stable →"}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function MatchCard({ match }: { match: CollegeMatch }) {
+  return (
+    <div className="rounded-2xl border border-border/80 bg-card p-4 shadow-[var(--shadow-soft)]">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-lg font-bold text-primary">#{match.msOpenRank}</p>
+        <ChancesPopover match={match} />
+      </div>
+      <div className="mt-3 min-w-0 space-y-1">
+        <p className="break-words font-semibold text-foreground">{match.collegeName}</p>
+        <p className="break-words text-xs text-muted-foreground">{match.divisionName}</p>
+        <p className="break-words text-xs text-primary/70">{match.universityName}</p>
+        <p className="text-xs text-muted-foreground">
+          MS OPEN median {match.msOpenMedian.toFixed(1)}%
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function FinderForm({ course }: FinderFormProps) {
   const [percentile, setPercentile] = useState("75");
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>("OPEN");
@@ -189,7 +314,7 @@ export function FinderForm({ course }: FinderFormProps) {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="min-w-0 space-y-8">
       <Card className="overflow-hidden bg-white/90">
         <CardContent className="pt-6">
           <form onSubmit={handleSearch} className="space-y-6">
@@ -365,7 +490,7 @@ export function FinderForm({ course }: FinderFormProps) {
       {error ? <Alert variant="error">{error}</Alert> : null}
 
       {summary ? (
-        <section className="animate-fade-up space-y-5">
+        <section className="animate-fade-up min-w-0 space-y-5">
           <div className="grid gap-3 sm:grid-cols-3">
             <StatCard label="All colleges" value={summary.total.toLocaleString()} hint="MS OPEN rank order" />
             <StatCard
@@ -391,8 +516,8 @@ export function FinderForm({ course }: FinderFormProps) {
                     : `Sorted by ${SORT_OPTIONS.find((option) => option.value === sortBy)?.label.toLowerCase()}.`}
               </p>
             </div>
-            <div className="flex flex-wrap items-end gap-3">
-              <Field className="min-w-[200px]">
+            <div className="flex w-full min-w-0 flex-wrap items-end gap-3 sm:w-auto">
+              <Field className="min-w-0 flex-1 sm:min-w-[200px] sm:flex-none">
                 <Label htmlFor="sort">Sort by</Label>
                 <Select
                   id="sort"
@@ -413,20 +538,23 @@ export function FinderForm({ course }: FinderFormProps) {
           {matches.length === 0 ? (
             <Alert>No colleges found for this course.</Alert>
           ) : (
-            <DataTable>
-              <DataTableHead>
-                <tr>
-                  <th className="w-12 px-4 py-3">Rank</th>
-                  <th className="px-4 py-3">College & Division</th>
-                  <th className="px-4 py-3">Your Chances</th>
-                </tr>
-              </DataTableHead>
-              <DataTableBody>
-                {sortedMatches.map((match) => {
-                  const labelCfg = LABEL_CONFIG[match.matchLabel];
-                  const hasAnyData = match.years.some((y) => y.hasData);
+            <>
+              <div className="space-y-3 md:hidden">
+                {sortedMatches.map((match) => (
+                  <MatchCard key={`${match.collegeId}-${match.divisionId}`} match={match} />
+                ))}
+              </div>
 
-                  return (
+              <DataTable className="hidden md:block">
+                <DataTableHead>
+                  <tr>
+                    <th className="w-12 px-4 py-3">Rank</th>
+                    <th className="px-4 py-3">College & Division</th>
+                    <th className="w-44 px-4 py-3">Your Chances</th>
+                  </tr>
+                </DataTableHead>
+                <DataTableBody>
+                  {sortedMatches.map((match) => (
                     <tr
                       key={`${match.collegeId}-${match.divisionId}`}
                       className="transition hover:bg-stone-50/80"
@@ -434,127 +562,28 @@ export function FinderForm({ course }: FinderFormProps) {
                       <td className="px-4 py-4 text-lg font-bold text-primary">
                         #{match.msOpenRank}
                       </td>
-                      <td className="px-4 py-4">
-                        <p className="font-semibold text-foreground">{match.collegeName}</p>
-                        <p className="text-xs text-muted-foreground">{match.divisionName}</p>
-                        <p className="text-xs text-primary/70">{match.universityName}</p>
+                      <td className="max-w-0 px-4 py-4">
+                        <p className="break-words font-semibold text-foreground">
+                          {match.collegeName}
+                        </p>
+                        <p className="break-words text-xs text-muted-foreground">
+                          {match.divisionName}
+                        </p>
+                        <p className="break-words text-xs text-primary/70">
+                          {match.universityName}
+                        </p>
                         <p className="mt-1 text-xs text-muted-foreground">
                           MS OPEN median {match.msOpenMedian.toFixed(1)}%
                         </p>
                       </td>
                       <td className="px-4 py-4">
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <button
-                              type="button"
-                              className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold transition hover:opacity-80"
-                              style={{ backgroundColor: "transparent" }}
-                            >
-                              <span
-                                className={cn(
-                                  "inline-block rounded-md border px-2 py-0.5 text-xs font-bold uppercase tracking-wide",
-                                  labelCfg.className,
-                                )}
-                              >
-                                {labelCfg.label}
-                              </span>
-                              {hasAnyData && (
-                                <span className="text-base font-bold text-foreground">
-                                  {match.chancePercent}%
-                                </span>
-                              )}
-                              {match.trend === "improving" && (
-                                <TrendingUp className="h-3.5 w-3.5 text-green-600" />
-                              )}
-                              {match.trend === "declining" && (
-                                <TrendingDown className="h-3.5 w-3.5 text-red-500" />
-                              )}
-                              {match.trend === "stable" && (
-                                <Minus className="h-3.5 w-3.5 text-muted-foreground" />
-                              )}
-                              <Info className="h-3.5 w-3.5 text-muted-foreground opacity-50" />
-                            </button>
-                          </PopoverTrigger>
-                          <PopoverContent className="p-0">
-                            {!hasAnyData ? (
-                              <p className="p-4 text-sm text-muted-foreground">
-                                No waitlist data matches your profile at this college.
-                              </p>
-                            ) : (
-                              <div className="text-sm">
-                                <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                                  <div>
-                                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                      Match score
-                                    </p>
-                                    <p className="text-3xl font-bold leading-tight">
-                                      {match.chancePercent}%
-                                    </p>
-                                  </div>
-                                  <span
-                                    className={cn(
-                                      "rounded-md border px-2 py-1 text-xs font-bold uppercase tracking-wide",
-                                      labelCfg.className,
-                                    )}
-                                  >
-                                    {labelCfg.label}
-                                  </span>
-                                </div>
-
-                                <div className="px-4 py-2">
-                                  {match.years.map((year) => (
-                                    <div
-                                      key={year.year}
-                                      className="flex items-baseline justify-between py-1.5"
-                                    >
-                                      <span className="text-muted-foreground">{year.year}</span>
-                                      {!year.hasData ? (
-                                        <span className="text-xs text-muted-foreground/50">
-                                          no data
-                                        </span>
-                                      ) : (
-                                        <span className="text-right">
-                                          <span className="font-semibold">{year.yearProb}%</span>
-                                          <span className="ml-2 text-xs text-muted-foreground">
-                                            n={year.waitlistCount} · med {year.median.toFixed(1)}%
-                                          </span>
-                                        </span>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-
-                                {match.trend !== "unknown" && (
-                                  <div className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-                                    Trend:{" "}
-                                    <span
-                                      className={cn(
-                                        "font-medium",
-                                        match.trend === "improving"
-                                          ? "text-green-600"
-                                          : match.trend === "declining"
-                                            ? "text-red-500"
-                                            : "text-foreground",
-                                      )}
-                                    >
-                                      {match.trend === "improving"
-                                        ? "getting easier ↑"
-                                        : match.trend === "declining"
-                                          ? "getting harder ↓"
-                                          : "stable →"}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </PopoverContent>
-                        </Popover>
+                        <ChancesPopover match={match} />
                       </td>
                     </tr>
-                  );
-                })}
-              </DataTableBody>
-            </DataTable>
+                  ))}
+                </DataTableBody>
+              </DataTable>
+            </>
           )}
         </section>
       ) : null}
