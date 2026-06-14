@@ -281,11 +281,13 @@ function buildAllotmentWhere(
     where.push(`${alias}.allotted_type LIKE $${i++}`);
   }
 
-  // Strictly match MS or OMS — excludes NRI, Minority, J&K quota seats.
+  // Match MS + MH (home-university) for Maharashtra, OMS for outside-state.
+  // MH seats use the same Maharashtra state eligibility as MS; excluding them
+  // causes many reserved-category seats to silently disappear (e.g. at KC).
   if (toCandidatureGroup(profile.candidatureType) === "OMS") {
     where.push(`${alias}.allotted_quota = 'OMS'`);
   } else {
-    where.push(`${alias}.allotted_quota = 'MS'`);
+    where.push(`${alias}.allotted_quota IN ('MS', 'MH')`);
   }
 
   // Gender: male candidates compete only for non-female-designated seats.
@@ -347,7 +349,7 @@ async function fetchAllotmentCutoffs(
     FROM allotment_entries ae
     WHERE ae.course = $1::"Course"
       AND ae.year = ANY($2::int[])
-      AND ae.merit_marks >= 0
+      AND ae.merit_marks > 0
       AND ae.merit_marks <= 100
       AND ${allotWhere.where.join("\n      AND ")}
     GROUP BY ae.year, ae.college_id, ae.division_id

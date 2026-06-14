@@ -44,9 +44,12 @@ WITH allot_typed AS (
       WHEN ae.allotted_type LIKE 'DT / VJ%' OR
            ae.allotted_type LIKE 'DT/VJ%'                                  THEN 'DT / VJ'
     END AS category,
-    -- Strict MS/OMS only — excludes NRI, Minority, J&K quota seats
+    -- MS/MH/OMS — excludes NRI, Minority, J&K quota seats.
+    -- MH (home-university seats) is treated as MS: same Maharashtra state
+    -- eligibility, just allocated from the college's home university pool.
     CASE
       WHEN ae.allotted_quota = 'MS'  THEN 'MS'
+      WHEN ae.allotted_quota = 'MH'  THEN 'MS'
       WHEN ae.allotted_quota = 'OMS' THEN 'OMS'
     END AS candidature_group
   FROM allotment_entries ae
