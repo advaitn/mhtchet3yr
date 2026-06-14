@@ -140,9 +140,16 @@ function ChancesPopover({ match }: { match: CollegeMatch }) {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[min(18rem,calc(100vw-2rem))] p-0">
         {!hasAnyData ? (
-          <p className="p-4 text-sm text-muted-foreground">
-            No waitlist data matches your profile at this college.
-          </p>
+          <div className="p-4 space-y-2">
+            <p className="text-sm text-muted-foreground">
+              No allotment data matches your profile at this college.
+            </p>
+            {/minority/i.test(match.divisionName) && (
+              <p className="text-xs text-muted-foreground/70 leading-relaxed">
+                This is a <span className="font-medium text-muted-foreground">minority institution</span> — reserved category seats (SC / ST / OBC / NT etc.) are managed internally and are not part of the general CAP allotment process.
+              </p>
+            )}
+          </div>
         ) : (
           <div className="text-sm">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
