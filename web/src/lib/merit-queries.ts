@@ -88,6 +88,7 @@ function aggregateMatches(
     }
   >,
   userPercentile: number,
+  msOpenRanks?: Map<string, number>,
 ): CollegeMatch[] {
   const grouped = new Map<string, CollegeMatch>();
 
@@ -107,6 +108,7 @@ function aggregateMatches(
         yearsQualified: yearData.qualifies ? 1 : 0,
         avgMedian: yearData.median,
         bestMedian: yearData.median,
+        msOpenRank: msOpenRanks?.get(key) ?? 999999,
       });
       continue;
     }
@@ -125,15 +127,7 @@ function aggregateMatches(
     match.bestMedian = Math.max(...medians);
   }
 
-  return [...grouped.values()].sort((a, b) => {
-    if (b.yearsQualified !== a.yearsQualified) {
-      return b.yearsQualified - a.yearsQualified;
-    }
-    if (b.avgMedian !== a.avgMedian) {
-      return b.avgMedian - a.avgMedian;
-    }
-    return a.collegeName.localeCompare(b.collegeName);
-  });
+  return [...grouped.values()].sort((a, b) => a.msOpenRank - b.msOpenRank);
 }
 
 function hasSpecialFilters(filters: FinderFilters): boolean {
@@ -145,6 +139,22 @@ function hasSpecialFilters(filters: FinderFilters): boolean {
 async function findFromMaterializedView(
   filters: FinderFilters,
 ): Promise<CollegeMatch[]> {
+  // Fetch MS OPEN rankings (for fixed ranking across all configurations)
+  const msOpenRawRows = await prisma.$queryRaw<Array<{ college_id: string; division_id: string }>>`
+    SELECT college_id, division_id
+    FROM college_cutoff_stats
+    WHERE course = ${filters.course}::"Course"
+      AND category = 'OPEN'
+      AND candidature_group = 'MS'
+    GROUP BY college_id, division_id
+    ORDER BY AVG(median_percentile) DESC
+  `;
+
+  const msOpenRanks = new Map<string, number>();
+  msOpenRawRows.forEach((row, index) => {
+    msOpenRanks.set(groupKey({ collegeId: row.college_id, divisionId: row.division_id }), index + 1);
+  });
+
   const rows = await prisma.$queryRaw<CutoffRow[]>`
     SELECT *
     FROM college_cutoff_stats
@@ -169,12 +179,29 @@ async function findFromMaterializedView(
       waitlist_count: row.waitlist_count,
     })),
     filters.percentile,
+    msOpenRanks,
   );
 }
 
 async function findFromLiveAggregation(
   filters: FinderFilters,
 ): Promise<CollegeMatch[]> {
+  // Fetch MS OPEN rankings for the reference ordering
+  const msOpenRows = await prisma.$queryRaw<Array<{ college_id: string; division_id: string }>>`
+    SELECT college_id, division_id
+    FROM college_cutoff_stats
+    WHERE course = ${filters.course}::"Course"
+      AND category = 'OPEN'
+      AND candidature_group = 'MS'
+    GROUP BY college_id, division_id
+    ORDER BY AVG(median_percentile) DESC
+  `;
+
+  const msOpenRanks = new Map<string, number>();
+  msOpenRows.forEach((row, index) => {
+    msOpenRanks.set(groupKey({ collegeId: row.college_id, divisionId: row.division_id }), index + 1);
+  });
+
   const candidatureCondition = candidatureSqlCondition(filters.candidatureGroup);
   const specialConditions: string[] = [];
 
@@ -227,7 +254,7 @@ async function findFromLiveAggregation(
     filters.percentile,
   );
 
-  return aggregateMatches(rows, filters.percentile);
+  return aggregateMatches(rows, filters.percentile, msOpenRanks);
 }
 
 export async function findEligibleColleges(

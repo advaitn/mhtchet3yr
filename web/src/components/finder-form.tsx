@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Search } from "lucide-react";
+import { Loader2, Search, Info } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/data-table";
 import { Field, Input, Label, Select } from "@/components/ui/input";
 import { Alert } from "@/components/ui/page-shell";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import {
   CANDIDATURE_OPTIONS,
   CATEGORIES,
@@ -275,7 +276,7 @@ export function FinderForm({ course }: FinderFormProps) {
             <div>
               <h2 className="text-xl font-semibold text-foreground">Results</h2>
               <p className="text-sm text-muted-foreground">
-                Sorted by consistency, then average median percentile.
+                Ranked by qualification consistency and average median. Hover on percentages for details.
               </p>
             </div>
             <ExportButton onClick={handleExport} disabled={matches.length === 0} />
@@ -289,73 +290,132 @@ export function FinderForm({ course }: FinderFormProps) {
             <DataTable>
               <DataTableHead>
                 <tr>
-                  <th className="px-4 py-3">College</th>
-                  <th className="px-4 py-3">Division</th>
-                  <th className="px-4 py-3">Years</th>
-                  <th className="px-4 py-3">2023</th>
-                  <th className="px-4 py-3">2024</th>
-                  <th className="px-4 py-3">2025</th>
-                  <th className="px-4 py-3">Avg Median</th>
+                  <th className="px-4 py-3 w-12">Rank</th>
+                  <th className="px-4 py-3">College & Division</th>
+                  <th className="px-4 py-3">Your Chances</th>
                 </tr>
               </DataTableHead>
               <DataTableBody>
                 {matches.map((match) => {
-                  const byYear = Object.fromEntries(
-                    match.years.map((year) => [year.year, year]),
+                  // Calculate overall chance: percentage of years where user qualifies
+                  const chancePercent = Math.round(
+                    (match.yearsQualified / match.years.length) * 100
                   );
+                  
+                  // Get the average cutoff across all years
+                  const avgCutoff = match.years.reduce((sum, y) => sum + y.cutoff, 0) / match.years.length;
 
                   return (
                     <tr
                       key={`${match.collegeId}-${match.divisionId}`}
-                      className="transition hover:bg-stone-50/80"
+                      className="transition hover:bg-gray-50"
                     >
-                      <td className="px-4 py-4 font-medium text-foreground">
-                        {match.collegeName}
-                      </td>
-                      <td className="max-w-xs px-4 py-4 text-muted-foreground">
-                        {match.divisionName}
+                      <td className="px-4 py-4 font-bold text-primary text-lg">
+                        #{match.msOpenRank}
                       </td>
                       <td className="px-4 py-4">
-                        <Badge
-                          variant={
-                            match.yearsQualified === 3
-                              ? "success"
-                              : match.yearsQualified >= 1
-                                ? "warning"
-                                : "default"
-                          }
-                        >
-                          {match.yearsQualified}/3
-                        </Badge>
+                        <div className="space-y-1">
+                          <p className="font-semibold text-foreground">
+                            {match.collegeName}
+                          </p>
+                          <div className="space-y-0.5">
+                            <p className="text-xs text-muted-foreground">
+                              {match.divisionName}
+                            </p>
+                            <p className="text-xs font-medium text-primary/70">
+                              {match.universityName}
+                            </p>
+                          </div>
+                        </div>
                       </td>
-                      {[2023, 2024, 2025].map((year) => {
-                        const data = byYear[year];
-                        if (!data) {
-                          return (
-                            <td key={year} className="px-4 py-4 text-muted-foreground">
-                              —
-                            </td>
-                          );
-                        }
-
-                        return (
-                          <td key={year} className="px-4 py-4">
-                            <div
+                      <td className="px-4 py-4">
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
                               className={cn(
-                                "font-medium",
-                                data.qualifies ? "text-success" : "text-muted-foreground",
+                                "cursor-help inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-bold text-xl transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
+                                chancePercent === 100
+                                  ? "text-success"
+                                  : chancePercent >= 50
+                                    ? "text-warning"
+                                    : "text-muted-foreground",
                               )}
                             >
-                              {data.cutoff.toFixed(1)}%
+                              {chancePercent}%
+                              <Info className="h-4 w-4 opacity-50" />
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent>
+                            <div className="space-y-3 w-72">
+                              <div>
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">
+                                  Your percentile
+                                </p>
+                                <p className="text-lg font-bold text-foreground">
+                                  {percentile}%
+                                </p>
+                              </div>
+                              <div className="border-t border-border pt-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">
+                                  Qualification consistency
+                                </p>
+                                <div className="mt-2 space-y-1">
+                                  {match.years.map((year) => (
+                                    <div key={year.year} className="flex items-center justify-between text-sm">
+                                      <span className="text-muted-foreground">{year.year}</span>
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-foreground">
+                                          {year.cutoff.toFixed(1)}%
+                                        </span>
+                                        <span className={cn(
+                                          "text-xs px-2 py-0.5 rounded",
+                                          year.qualifies
+                                            ? "bg-green-100 text-green-800"
+                                            : "bg-red-100 text-red-800"
+                                        )}>
+                                          {year.qualifies ? "✓ Qualify" : "✗ Below"}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                                <p className="mt-2 text-xs font-medium text-foreground">
+                                  Overall: {match.yearsQualified}/{match.years.length} years
+                                </p>
+                              </div>
+                              <div className="border-t border-border pt-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">
+                                  Average cutoff
+                                </p>
+                                <p className="text-lg font-bold text-foreground">
+                                  {avgCutoff.toFixed(1)}%
+                                </p>
+                              </div>
+                              <div className="border-t border-border pt-3">
+                                <p className="text-xs font-semibold uppercase text-muted-foreground">
+                                  Median percentiles
+                                </p>
+                                <p className="text-sm text-foreground">
+                                  Average: <span className="font-bold">{match.avgMedian.toFixed(1)}%</span>
+                                </p>
+                                <p className="text-sm text-foreground">
+                                  Best: <span className="font-bold">{match.bestMedian.toFixed(1)}%</span>
+                                </p>
+                              </div>
+                              <div className="border-t border-border pt-3">
+                                <p className="text-xs font-medium text-muted-foreground">
+                                  {chancePercent === 100
+                                    ? "✓ You qualify in all available years. Very safe option."
+                                    : chancePercent >= 67
+                                      ? "✓ You qualify in most years. Safe option."
+                                      : chancePercent >= 34
+                                        ? "◐ You qualify in some years. Moderate option."
+                                        : "✗ You qualify in very few years. Risky option."}
+                                </p>
+                              </div>
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              med {data.median.toFixed(1)}%
-                            </div>
-                          </td>
-                        );
-                      })}
-                      <td className="px-4 py-4 font-semibold text-foreground">
-                        {match.avgMedian.toFixed(1)}%
+                          </PopoverContent>
+                        </Popover>
                       </td>
                     </tr>
                   );

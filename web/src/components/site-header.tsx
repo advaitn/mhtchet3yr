@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { GraduationCap, Menu, X } from "lucide-react";
+import { BookOpen, Menu, X } from "lucide-react";
 import { useState } from "react";
 
 import { cn } from "@/lib/utils";
@@ -25,20 +25,18 @@ export function SiteHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border/70 bg-white/75 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
-        <Link href="/" className="group flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm transition group-hover:scale-[1.02]">
-            <GraduationCap className="h-5 w-5" />
-          </span>
-          <span className="leading-tight">
-            <span className="block text-sm font-semibold tracking-tight text-foreground">
-              MHT-CET Law Guide
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Waitlist intelligence
-            </span>
-          </span>
+    <header className="sticky top-0 z-50 border-b border-border bg-white shadow-sm">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+        <Link href="/" className="flex items-center gap-2.5 flex-shrink-0">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-white">
+            <BookOpen className="h-5 w-5" />
+          </div>
+          <div className="hidden sm:block">
+            <p className="text-sm font-semibold text-foreground leading-tight">
+              LawCET Guide
+            </p>
+            <p className="text-xs text-muted-foreground">Admission intelligence</p>
+          </div>
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex">
@@ -47,10 +45,10 @@ export function SiteHeader() {
               key={link.href}
               href={link.href}
               className={cn(
-                "rounded-full px-4 py-2 text-sm font-medium transition",
+                "px-3.5 py-2 text-sm font-medium transition rounded-lg",
                 isActive(link.href)
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-stone-100 hover:text-foreground",
+                  ? "bg-primary text-white shadow-sm"
+                  : "text-foreground hover:bg-gray-100",
               )}
             >
               {link.label}
@@ -60,7 +58,7 @@ export function SiteHeader() {
 
         <button
           type="button"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-white md:hidden"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-white hover:bg-gray-50 md:hidden transition"
           onClick={() => setOpen((value) => !value)}
           aria-label="Toggle menu"
         >
@@ -69,7 +67,7 @@ export function SiteHeader() {
       </div>
 
       {open ? (
-        <div className="border-t border-border/70 bg-white px-4 py-3 md:hidden">
+        <div className="border-t border-border bg-white px-4 py-3 md:hidden">
           <nav className="flex flex-col gap-1">
             {links.map((link) => (
               <Link
@@ -77,10 +75,10 @@ export function SiteHeader() {
                 href={link.href}
                 onClick={() => setOpen(false)}
                 className={cn(
-                  "rounded-xl px-4 py-3 text-sm font-medium",
+                  "rounded-lg px-3.5 py-2 text-sm font-medium transition",
                   isActive(link.href)
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-stone-50",
+                    ? "bg-primary text-white"
+                    : "text-foreground hover:bg-gray-50",
                 )}
               >
                 {link.label}
