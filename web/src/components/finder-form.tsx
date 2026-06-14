@@ -25,6 +25,7 @@ import {
 import { CATEGORIES, CATEGORY_LABELS } from "@/lib/constants";
 import { collegeMatchesToCsv, downloadCsv } from "@/lib/export-csv";
 import { cn } from "@/lib/utils";
+import { universityLogo, shortUniversityName } from "@/lib/university-logos";
 import type { CollegeMatch } from "@/types/merit";
 import type { Course } from "@/generated/prisma/client";
 
@@ -328,24 +329,63 @@ function CollegeInfoButton({ match, course }: { match: CollegeMatch; course: str
   );
 }
 
+/** Strips the numeric division ID prefix, e.g. "2402410612-LL.B. (3 Yrs.)…" → "LL.B. (3 Yrs.)…" */
+function cleanDivisionName(raw: string): string {
+  return raw.replace(/^\d+-/, "").trim();
+}
+
+function CollegeDetails({ match }: { match: CollegeMatch }) {
+  const logo = universityLogo(match.universityName);
+  const uniName = shortUniversityName(match.universityName);
+  const division = cleanDivisionName(match.divisionName);
+
+  return (
+    <div className="min-w-0 space-y-1">
+      <p className="break-words font-semibold leading-snug text-foreground">
+        {match.collegeName}
+      </p>
+
+      {/* University + logo */}
+      <div className="flex items-center gap-1.5">
+        {logo && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={logo}
+            alt=""
+            width={14}
+            height={14}
+            className="h-3.5 w-3.5 shrink-0 rounded-full object-contain"
+          />
+        )}
+        <span className="break-words text-xs font-medium text-primary/70">{uniName}</span>
+      </div>
+
+      {/* Division — very muted */}
+      <p className="break-words text-[11px] leading-relaxed text-muted-foreground/60">
+        {division}
+      </p>
+
+      {/* MS OPEN cutoff badge */}
+      <div className="pt-0.5">
+        <span className="inline-flex items-center rounded-md bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-500">
+          MS OPEN ~{match.msOpenCutoff.toFixed(1)}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function MatchCard({ match, course }: { match: CollegeMatch; course: string }) {
   return (
     <div className="rounded-2xl border border-border/80 bg-card p-4 shadow-[var(--shadow-soft)]">
-      <div className="flex items-start justify-between gap-3">
+      <div className="mb-3 flex items-start justify-between gap-3">
         <p className="text-lg font-bold text-primary">#{match.msOpenRank}</p>
         <div className="flex items-center gap-1.5">
           <CollegeInfoButton match={match} course={course} />
           <ChancesPopover match={match} />
         </div>
       </div>
-      <div className="mt-3 min-w-0 space-y-1">
-        <p className="break-words font-semibold text-foreground">{match.collegeName}</p>
-        <p className="break-words text-xs text-muted-foreground">{match.divisionName}</p>
-        <p className="break-words text-xs text-primary/70">{match.universityName}</p>
-        <p className="text-xs text-muted-foreground">
-          MS OPEN cutoff ~{match.msOpenCutoff.toFixed(1)}%
-        </p>
-      </div>
+      <CollegeDetails match={match} />
     </div>
   );
 }
@@ -711,18 +751,7 @@ export function FinderForm({ course }: FinderFormProps) {
                         #{match.msOpenRank}
                       </td>
                       <td className="max-w-0 px-4 py-4">
-                        <p className="break-words font-semibold text-foreground">
-                          {match.collegeName}
-                        </p>
-                        <p className="break-words text-xs text-muted-foreground">
-                          {match.divisionName}
-                        </p>
-                        <p className="break-words text-xs text-primary/70">
-                          {match.universityName}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          MS OPEN cutoff ~{match.msOpenCutoff.toFixed(1)}%
-                        </p>
+                        <CollegeDetails match={match} />
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-2">
