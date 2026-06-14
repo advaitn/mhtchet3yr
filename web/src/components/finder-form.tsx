@@ -443,12 +443,12 @@ export function FinderForm({ course }: FinderFormProps) {
     <div className="min-w-0 space-y-8">
       <Card className="overflow-hidden bg-white/90">
         <CardContent className="pt-6">
-          <form onSubmit={handleSearch} className="space-y-6">
+          <form onSubmit={handleSearch} className="space-y-5">
 
             {/* Row 1: Score + Category */}
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2">
               <Field>
-                <Label htmlFor="percentile">Your MHT-CET percentile</Label>
+                <Label htmlFor="percentile">MHT-CET percentile</Label>
                 <div className="relative">
                   <Input
                     id="percentile"
@@ -458,10 +458,10 @@ export function FinderForm({ course }: FinderFormProps) {
                     step="0.01"
                     value={percentile}
                     onChange={(event) => setPercentile(event.target.value)}
-                    className="pr-12 text-lg font-semibold"
+                    className="pr-10 text-lg font-semibold"
                     required
                   />
-                  <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-sm font-medium text-muted-foreground">
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground">
                     %
                   </span>
                 </div>
@@ -485,36 +485,8 @@ export function FinderForm({ course }: FinderFormProps) {
               </Field>
             </div>
 
-            {/* Candidature type — pill row */}
-            <Field>
-              <Label>Candidature type</Label>
-              <div className="flex flex-wrap gap-2 pt-0.5">
-                {CANDIDATURE_TYPES.map((item) => {
-                  const short = item
-                    .replace("Maharashtra - ", "")
-                    .replace(" Migrant", "");
-                  const active = candidatureType === item;
-                  return (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => setCandidatureType(item)}
-                      className={cn(
-                        "rounded-lg border px-3 py-1.5 text-sm font-medium transition",
-                        active
-                          ? "border-primary bg-primary text-white"
-                          : "border-border bg-white text-muted-foreground hover:border-primary/50 hover:text-foreground",
-                      )}
-                    >
-                      {short}
-                    </button>
-                  );
-                })}
-              </div>
-            </Field>
-
-            {/* Gender + Division + Minority */}
-            <div className="grid gap-4 sm:grid-cols-3">
+            {/* Row 2: Gender + Candidature type */}
+            <div className="grid gap-3 sm:grid-cols-[auto_1fr] sm:items-end">
               <Field>
                 <Label>Gender</Label>
                 <div className="flex gap-2 pt-0.5">
@@ -526,7 +498,7 @@ export function FinderForm({ course }: FinderFormProps) {
                         type="button"
                         onClick={() => setGender(item.value)}
                         className={cn(
-                          "flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition",
+                          "w-20 rounded-lg border px-3 py-2 text-sm font-medium transition",
                           active
                             ? "border-primary bg-primary text-white"
                             : "border-border bg-white text-muted-foreground hover:border-primary/50 hover:text-foreground",
@@ -540,9 +512,42 @@ export function FinderForm({ course }: FinderFormProps) {
               </Field>
 
               <Field>
-                <Label>Division</Label>
+                <Label>Candidature type</Label>
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {CANDIDATURE_TYPES.map((item) => {
+                    const short = item
+                      .replace("Maharashtra - ", "")
+                      .replace(" Migrant", "");
+                    const active = candidatureType === item;
+                    return (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => setCandidatureType(item)}
+                        className={cn(
+                          "rounded-lg border px-3 py-2 text-sm font-medium transition",
+                          active
+                            ? "border-primary bg-primary text-white"
+                            : "border-border bg-white text-muted-foreground hover:border-primary/50 hover:text-foreground",
+                        )}
+                      >
+                        {short}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+            </div>
+
+            {/* Row 3: Division + Minority */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field>
+                <Label>College type</Label>
                 <div className="flex gap-2 pt-0.5">
                   {DIVISION_GENDER_OPTIONS.map((item) => {
+                    const short =
+                      item.value === "any" ? "Any" :
+                      item.value === "coed" ? "Co-ed" : "Women's";
                     const active = divisionGender === item.value;
                     return (
                       <button
@@ -556,7 +561,7 @@ export function FinderForm({ course }: FinderFormProps) {
                             : "border-border bg-white text-muted-foreground hover:border-primary/50 hover:text-foreground",
                         )}
                       >
-                        {item.label}
+                        {short}
                       </button>
                     );
                   })}
@@ -564,7 +569,7 @@ export function FinderForm({ course }: FinderFormProps) {
               </Field>
 
               <Field>
-                <Label htmlFor="minority">Minority status</Label>
+                <Label htmlFor="minority">Minority claim</Label>
                 <Select
                   id="minority"
                   value={minority}
@@ -583,42 +588,35 @@ export function FinderForm({ course }: FinderFormProps) {
               </Field>
             </div>
 
-            {/* Special status toggles */}
-            <Field>
-              <Label>Special status <span className="font-normal text-muted-foreground">(click to toggle)</span></Label>
-              <div className="flex flex-wrap gap-2 pt-0.5">
-                {(
-                  [
-                    { label: "Differently abled (PH)", value: differentlyAbled, set: setDifferentlyAbled },
-                    { label: "Orphan", value: orphan, set: setOrphan },
-                    { label: "Ex-servicemen / Defence", value: exServicemen, set: setExServicemen },
-                  ] as const
-                ).map(({ label, value, set }) => {
-                  const active = value === "Yes";
-                  return (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => set(active ? "No" : "Yes")}
-                      className={cn(
-                        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition",
-                        active
-                          ? "border-amber-400 bg-amber-50 text-amber-800"
-                          : "border-border bg-white text-muted-foreground hover:border-primary/50 hover:text-foreground",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "h-1.5 w-1.5 rounded-full",
-                          active ? "bg-amber-500" : "bg-stone-300",
-                        )}
-                      />
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </Field>
+            {/* Row 4: Special status — subtle */}
+            <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-4">
+              <span className="text-xs font-medium text-muted-foreground">Special status:</span>
+              {(
+                [
+                  { label: "Differently abled (PH)", value: differentlyAbled, set: setDifferentlyAbled },
+                  { label: "Orphan", value: orphan, set: setOrphan },
+                  { label: "Ex-servicemen", value: exServicemen, set: setExServicemen },
+                ] as const
+              ).map(({ label, value, set }) => {
+                const active = value === "Yes";
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => set(active ? "No" : "Yes")}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition",
+                      active
+                        ? "border-amber-400 bg-amber-50 text-amber-700"
+                        : "border-border bg-white text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                    )}
+                  >
+                    <span className={cn("h-1.5 w-1.5 rounded-full", active ? "bg-amber-500" : "bg-stone-300")} />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
 
             <Button type="submit" disabled={isPending} size="lg" className="w-full sm:w-auto">
               {isPending ? (
