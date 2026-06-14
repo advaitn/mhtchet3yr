@@ -13,7 +13,6 @@ export function parseCandidatureGroup(value: string | null | undefined): Candida
   return value === "OMS" ? "OMS" : "MS";
 }
 
-/** SQL fragment for filtering merit_entries by MS/OMS group. */
 export function candidatureSqlCondition(group: CandidatureGroup, alias = "me"): string {
   if (group === "OMS") {
     return `${alias}.candidature_type = 'OMS'`;

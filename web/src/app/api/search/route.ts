@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   CANDIDATURE_TYPES,
   DIVISION_GENDER_OPTIONS,
+  GENDER_OPTIONS,
   MINORITY_OPTIONS,
   YES_NO,
 } from "@/lib/candidate-profile";
@@ -14,6 +15,7 @@ const searchSchema = z.object({
   course: z.enum(COURSE_OPTIONS.map((option) => option.value) as ["LLB_3", "LLB_5"]),
   category: z.enum(CATEGORIES),
   percentile: z.number().min(0).max(100),
+  gender: z.enum(GENDER_OPTIONS.map((o) => o.value) as ["male", "female"]),
   candidatureType: z.enum(CANDIDATURE_TYPES),
   differentlyAbled: z.enum(YES_NO),
   orphan: z.enum(YES_NO),

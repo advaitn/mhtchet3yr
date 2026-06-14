@@ -28,6 +28,29 @@ model AdmissionCycle {
   @@map("admission_cycles")
 }
 
+model AllotmentEntry {
+  id               String   @id @default(cuid())
+  course           Course
+  year             Int
+  phase            String
+  universityId     String   @map("university_id")
+  universityName   String   @map("university_name")
+  collegeId        String   @map("college_id")
+  collegeName      String   @map("college_name")
+  divisionId       String   @map("division_id")
+  divisionName     String   @map("division_name")
+  eligibleCategory String   @map("eligible_category")
+  allottedType     String   @map("allotted_type")
+  eligibleQuota    String   @map("eligible_quota")
+  allottedQuota    String   @map("allotted_quota")
+  meritMarks       Decimal  @map("merit_marks") @db.Decimal(10, 7)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([course, year, collegeId, divisionId])
+  @@index([course, year, phase, collegeId, divisionId, allottedType, allottedQuota])
+  @@map("allotment_entries")
+}
+
 model MeritEntry {
   id                     String         @id @default(cuid())
   cycleId                String         @map("cycle_id")

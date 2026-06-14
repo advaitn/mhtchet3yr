@@ -18,6 +18,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import {
   CANDIDATURE_TYPES,
   DIVISION_GENDER_OPTIONS,
+  GENDER_OPTIONS,
   MINORITY_OPTIONS,
   YES_NO,
 } from "@/lib/candidate-profile";
@@ -234,6 +235,7 @@ export function FinderForm({ course }: FinderFormProps) {
   const [differentlyAbled, setDifferentlyAbled] = useState<(typeof YES_NO)[number]>("No");
   const [orphan, setOrphan] = useState<(typeof YES_NO)[number]>("No");
   const [exServicemen, setExServicemen] = useState<(typeof YES_NO)[number]>("No");
+  const [gender, setGender] = useState<(typeof GENDER_OPTIONS)[number]["value"]>("male");
   const [divisionGender, setDivisionGender] =
     useState<(typeof DIVISION_GENDER_OPTIONS)[number]["value"]>("any");
   const [minority, setMinority] =
@@ -282,6 +284,7 @@ export function FinderForm({ course }: FinderFormProps) {
           course,
           category,
           percentile: parsedPercentile,
+          gender,
           candidatureType,
           differentlyAbled,
           orphan,
@@ -387,8 +390,32 @@ export function FinderForm({ course }: FinderFormProps) {
               </div>
             </Field>
 
-            {/* Division + Minority */}
-            <div className="grid gap-4 sm:grid-cols-2">
+            {/* Gender + Division + Minority */}
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field>
+                <Label>Gender</Label>
+                <div className="flex gap-2 pt-0.5">
+                  {GENDER_OPTIONS.map((item) => {
+                    const active = gender === item.value;
+                    return (
+                      <button
+                        key={item.value}
+                        type="button"
+                        onClick={() => setGender(item.value)}
+                        className={cn(
+                          "flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition",
+                          active
+                            ? "border-primary bg-primary text-white"
+                            : "border-border bg-white text-muted-foreground hover:border-primary/50 hover:text-foreground",
+                        )}
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+
               <Field>
                 <Label>Division</Label>
                 <div className="flex gap-2 pt-0.5">

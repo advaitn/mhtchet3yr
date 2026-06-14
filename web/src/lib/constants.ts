@@ -32,7 +32,9 @@ export const CANDIDATURE_OPTIONS = [
   },
 ];
 
-export const YEARS = [2023, 2024, 2025] as const;
+// 2023 allotment data uses raw marks (121/150) — no percentile data available.
+// Only years with allotment data are considered.
+export const YEARS = [2024, 2025] as const;
 
 export const CATEGORY_LABELS: Record<Category, string> = {
   OPEN: "Open",

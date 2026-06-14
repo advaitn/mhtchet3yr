@@ -1,6 +1,7 @@
 import type {
   CandidatureType,
   DivisionGender,
+  Gender,
   MinorityOption,
   YesNo,
 } from "@/lib/candidate-profile";
@@ -11,6 +12,7 @@ export type CandidateProfile = {
   course: Course;
   category: Category;
   percentile: number;
+  gender: Gender;
   candidatureType: CandidatureType;
   differentlyAbled: YesNo;
   orphan: YesNo;

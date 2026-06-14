@@ -6,7 +6,6 @@ import { MIN_COHORT_SIZE } from "@/lib/candidate-profile";
 import { toCandidatureGroup, type CandidatureGroup } from "@/lib/candidature";
 import type { Category } from "@/lib/constants";
 import { YEARS } from "@/lib/constants";
-import { buildProfileSql } from "@/lib/profile-sql";
 import { prisma } from "@/lib/prisma";
 import type {
   CandidateProfile,
@@ -62,50 +61,49 @@ function groupKey(collegeId: string, divisionId: string): string {
 }
 
 /**
- * Estimate admission chance from where the user's percentile sits in the
- * waitlist's competitive band. The full waitlist median (~60–70%) reflects
- * all applicants, not admitted students — so we anchor on p75 (seat line),
- * p95 (strong), and max (ceiling) instead of score-distribution cume_dist.
+ * Estimate admission chance from allotment data.
+ *
+ *   minAdmitted  = MIN(merit_marks) across all CAP rounds — true floor.
+ *                  Someone above this WAS admitted in that year.
+ *   top          = MAX(merit_marks) — ceiling of admitted class.
+ *   p25Admitted  = retained in signature for future use; not used in scoring.
+ *
+ * Design principle: being anywhere inside [min, top] means the user would have
+ * been admitted in that historical year. The uncertainty comes from year-to-year
+ * cutoff variation, not from where they sit within the admitted class.
+ *
+ * Scale:
+ *   user ≥ top           →  95 %  (above everyone admitted)
+ *   user = min           →  70 %  (just made the cut; cutoff shifts ±1-2 pts/year)
+ *   user between min–top →  70–95 % linearly
+ *   user within 2 pts below min →  5–70 % (near-floor uncertainty band)
+ *   user > 2 pts below min →  5 %
  */
 export function computeChanceFromCutoffs(
   userPercentile: number,
-  cutoffP75: number,
-  competitiveP95: number,
+  minAdmitted: number,
+  _p25Admitted: number,
   top: number,
 ): number {
-  if (top <= cutoffP75) {
-    if (userPercentile >= top) return 90;
-    if (userPercentile >= cutoffP75) return 50;
-    return 10;
-  }
-
   if (userPercentile >= top) return 95;
 
-  if (userPercentile >= competitiveP95) {
-    const span = Math.max(top - competitiveP95, 0.01);
-    const t = (userPercentile - competitiveP95) / span;
-    return Math.round(75 + t * 20);
+  if (userPercentile >= minAdmitted) {
+    const t = (userPercentile - minAdmitted) / Math.max(top - minAdmitted, 0.01);
+    return Math.round(70 + t * 25); // 70–95 %
   }
 
-  if (userPercentile >= cutoffP75) {
-    const span = Math.max(competitiveP95 - cutoffP75, 0.01);
-    const t = (userPercentile - cutoffP75) / span;
-    return Math.round(40 + t * 35);
-  }
-
-  const floor = Math.max(0, cutoffP75 - 20);
-  if (userPercentile <= floor) return 5;
-
-  const span = Math.max(cutoffP75 - floor, 0.01);
-  const t = (userPercentile - floor) / span;
-  return Math.round(5 + t * 35);
+  // ±2 percentile point buffer for year-to-year cutoff variation
+  const nearFloor = Math.max(0, minAdmitted - 2);
+  if (userPercentile <= nearFloor) return 5;
+  const t = (userPercentile - nearFloor) / Math.max(minAdmitted - nearFloor, 0.01);
+  return Math.round(5 + t * 65); // 5–70 %
 }
 
 export function toMatchLabel(chancePercent: number): MatchLabel {
-  if (chancePercent >= 85) return "safe";
-  if (chancePercent >= 65) return "good";
-  if (chancePercent >= 45) return "borderline";
-  if (chancePercent >= 20) return "reach";
+  if (chancePercent >= 88) return "safe";
+  if (chancePercent >= 75) return "good";
+  if (chancePercent >= 55) return "borderline";
+  if (chancePercent >= 25) return "reach";
   return "unlikely";
 }
 
@@ -151,20 +149,6 @@ function emptyYearCutoff(year: number): YearCutoff {
   };
 }
 
-function mergeCutoffRows(...sources: ProfileCutoffRow[][]): ProfileCutoffRow[] {
-  const byKey = new Map<string, ProfileCutoffRow>();
-
-  for (const rows of sources) {
-    for (const row of rows) {
-      const key = `${row.year}|${row.college_id}|${row.division_id}`;
-      if (!byKey.has(key)) {
-        byKey.set(key, row);
-      }
-    }
-  }
-
-  return [...byKey.values()];
-}
 
 function buildArbitratedYears(
   rows: ProfileCutoffRow[],
@@ -258,73 +242,137 @@ function aggregateProfileByDivision(
   return result;
 }
 
-async function fetchProfileCutoffs(
+/**
+ * Build WHERE fragments + params for querying allotment_entries by profile.
+ * Maps profile.category → allotted_type prefix pattern.
+ * Maps profile.candidatureType → allotted_quota (MS / OMS).
+ * Demographic sub-filters (PH / orphan / ex-servicemen) are not present in
+ * allotment data and are intentionally omitted.
+ */
+function buildAllotmentWhere(
   profile: CandidateProfile,
-  options: {
-    years?: readonly number[];
-    includeDemographics?: boolean;
-  } = {},
+  startIndex: number,
+  alias = "ae",
+): { where: string[]; params: unknown[]; nextIndex: number } {
+  const where: string[] = [];
+  const params: unknown[] = [];
+  let i = startIndex;
+
+  const cat = profile.category;
+  if (cat === "OPEN-EWS") {
+    where.push(`${alias}.allotted_type LIKE 'OPEN-EWS%'`);
+  } else if (cat === "OPEN") {
+    where.push(
+      `${alias}.allotted_type LIKE 'OPEN%' AND ${alias}.allotted_type NOT LIKE 'OPEN-EWS%'`,
+    );
+  } else if (cat === "NT 1 (NT-B)") {
+    where.push(`${alias}.allotted_type LIKE 'NT 1%'`);
+  } else if (cat === "NT 2 (NT-C)") {
+    where.push(`${alias}.allotted_type LIKE 'NT 2%'`);
+  } else if (cat === "NT 3 (NT-D)") {
+    where.push(`${alias}.allotted_type LIKE 'NT 3%'`);
+  } else if (cat === "DT / VJ") {
+    where.push(
+      `(${alias}.allotted_type LIKE 'DT / VJ%' OR ${alias}.allotted_type LIKE 'DT/VJ%')`,
+    );
+  } else {
+    // SC, ST, OBC, SEBC, SBC, etc. — safe to use parameterised LIKE
+    params.push(`${cat}%`);
+    where.push(`${alias}.allotted_type LIKE $${i++}`);
+  }
+
+  // Strictly match MS or OMS — excludes NRI, Minority, J&K quota seats.
+  if (toCandidatureGroup(profile.candidatureType) === "OMS") {
+    where.push(`${alias}.allotted_quota = 'OMS'`);
+  } else {
+    where.push(`${alias}.allotted_quota = 'MS'`);
+  }
+
+  // Gender: male candidates compete only for non-female-designated seats.
+  // Female candidates are eligible for both General and Female-designated seats.
+  if (profile.gender === "male") {
+    where.push(`${alias}.allotted_type NOT LIKE '%-Female%'`);
+  }
+
+  // Exclude demographic sub-allocations (PH / Orphan / Defence / NRI-converted)
+  // which have abnormally low merit marks and distort the category cutoff.
+  where.push(
+    `${alias}.allotted_type NOT LIKE '%-PH%'` +
+    ` AND ${alias}.allotted_type NOT LIKE '%-OrPHan%'` +
+    ` AND ${alias}.allotted_type NOT LIKE '%-Defence%'` +
+    ` AND ${alias}.allotted_type NOT LIKE '%(NRI%'`,
+  );
+
+  if (profile.divisionGender === "coed") {
+    where.push(`${alias}.division_name ILIKE '%Co-Education%'`);
+  } else if (profile.divisionGender === "women") {
+    where.push(
+      `(${alias}.division_name ILIKE '%Women%' OR ${alias}.division_name ILIKE '%Woman%')`,
+    );
+  }
+
+  return { where, params, nextIndex: i };
+}
+
+/**
+ * Query allotment_entries to derive admission cutoffs.
+ * All CAP rounds (phases) are combined — GROUP BY omits phase so MIN(merit_marks)
+ * captures the true floor across the entire admission season for a given year.
+ *
+ * cutoff_percentile  = MIN  — lowest admitted score (real floor)
+ * competitive_percentile = PERCENTILE_CONT(0.25) — lower quartile of admitted class
+ * top_percentile     = MAX  — highest admitted score
+ * median_percentile  = PERCENTILE_CONT(0.5) — median of admitted class
+ */
+async function fetchAllotmentCutoffs(
+  profile: CandidateProfile,
+  years: readonly number[],
 ): Promise<ProfileCutoffRow[]> {
-  const years = options.years ?? YEARS;
-  const profileSql = buildProfileSql(profile, 2, "me", {
-    includeDemographics: options.includeDemographics ?? true,
-  });
-  const yearFilterIndex = profileSql.params.length + 2;
-  const minCohortParam = profileSql.params.length + 3;
+  const allotWhere = buildAllotmentWhere(profile, 3);
+  const minCohortParam = allotWhere.nextIndex;
 
   const query = `
     SELECT
-      ac.year,
-      me.college_id,
-      me.college_name,
-      me.division_id,
-      me.division_name,
-      me.university_name,
-      PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY me.merit_percentile) AS cutoff_percentile,
-      PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY me.merit_percentile) AS competitive_percentile,
-      MAX(me.merit_percentile) AS top_percentile,
-      PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY me.merit_percentile) AS median_percentile,
-      COUNT(*)::int AS waitlist_count
-    FROM merit_entries me
-    INNER JOIN admission_cycles ac ON ac.id = me.cycle_id
-    WHERE ac.course = $1::"Course"
-      AND ac.year = ANY($${yearFilterIndex}::int[])
-      AND me.merit_percentile >= 0
-      AND me.merit_percentile <= 100
-      AND ${profileSql.where.join("\n      AND ")}
-    GROUP BY
-      ac.year,
-      me.college_id,
-      me.college_name,
-      me.division_id,
-      me.division_name,
-      me.university_name
+      ae.year,
+      ae.college_id,
+      MIN(ae.college_name)    AS college_name,
+      ae.division_id,
+      MIN(ae.division_name)   AS division_name,
+      MIN(ae.university_name) AS university_name,
+      MIN(ae.merit_marks::float)                                            AS cutoff_percentile,
+      PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY ae.merit_marks::float)  AS competitive_percentile,
+      MAX(ae.merit_marks::float)                                            AS top_percentile,
+      PERCENTILE_CONT(0.5)  WITHIN GROUP (ORDER BY ae.merit_marks::float)  AS median_percentile,
+      COUNT(*)::int                                                          AS waitlist_count
+    FROM allotment_entries ae
+    WHERE ae.course = $1::"Course"
+      AND ae.year = ANY($2::int[])
+      AND ae.merit_marks >= 0
+      AND ae.merit_marks <= 100
+      AND ${allotWhere.where.join("\n      AND ")}
+    GROUP BY ae.year, ae.college_id, ae.division_id
     HAVING COUNT(*) >= $${minCohortParam}
   `;
 
   return prisma.$queryRawUnsafe<ProfileCutoffRow[]>(
     query,
     profile.course,
-    ...profileSql.params,
     years,
+    ...allotWhere.params,
     MIN_COHORT_SIZE,
   );
 }
 
+
 export async function findEligibleColleges(
   profile: CandidateProfile,
 ): Promise<CollegeMatch[]> {
-  const legacyYears = YEARS.filter((year) => year < 2025);
-  const strictYears = [2025] as const;
-
-  const [rankList, strictRows, relaxedRows] = await Promise.all([
+  const [rankList, allotRows] = await Promise.all([
     getMsOpenRankList(profile.course),
-    fetchProfileCutoffs(profile, { years: strictYears, includeDemographics: true }),
-    fetchProfileCutoffs(profile, { years: legacyYears, includeDemographics: false }),
+    fetchAllotmentCutoffs(profile, YEARS),
   ]);
 
-  const mergedRows = mergeCutoffRows(strictRows, relaxedRows);
-  const profileByDivision = aggregateProfileByDivision(mergedRows, profile.percentile);
+  const profileByDivision = aggregateProfileByDivision(allotRows, profile.percentile);
 
   const emptyProfile = summarizeYears(YEARS.map((year) => emptyYearCutoff(year)));
 

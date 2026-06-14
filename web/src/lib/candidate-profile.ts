@@ -18,6 +18,13 @@ export const DIVISION_GENDER_OPTIONS = [
 
 export type DivisionGender = (typeof DIVISION_GENDER_OPTIONS)[number]["value"];
 
+export const GENDER_OPTIONS = [
+  { value: "male" as const, label: "Male" },
+  { value: "female" as const, label: "Female" },
+] as const;
+
+export type Gender = (typeof GENDER_OPTIONS)[number]["value"];
+
 export const MINORITY_OPTIONS = [
   { value: "none" as const, label: "No minority claim" },
   { value: "Religious Minority - Muslim" as const, label: "Religious — Muslim" },
