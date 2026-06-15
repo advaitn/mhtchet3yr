@@ -183,7 +183,7 @@ function summarizeYears(years: YearCutoff[]): Pick<
   };
 }
 
-type MsOpenRankRow = {
+export type MsOpenRankRow = {
   college_id: string;
   college_name: string;
   division_id: string;
@@ -192,7 +192,7 @@ type MsOpenRankRow = {
   ms_open_cutoff: Prisma.Decimal;
 };
 
-async function getMsOpenRankList(course: CandidateProfile["course"]): Promise<MsOpenRankRow[]> {
+export async function getMsOpenRankList(course: CandidateProfile["course"]): Promise<MsOpenRankRow[]> {
   return prisma.$queryRaw<MsOpenRankRow[]>`
     SELECT
       college_id,

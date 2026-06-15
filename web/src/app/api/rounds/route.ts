@@ -7,7 +7,7 @@ import {
   GENDER_OPTIONS,
 } from "@/lib/candidate-profile";
 import { CATEGORIES, COURSE_OPTIONS, YEARS } from "@/lib/constants";
-import { fetchRoundCutoffs } from "@/lib/merit-queries";
+import { fetchRoundCutoffs, getMsOpenRankList } from "@/lib/merit-queries";
 
 const schema = z.object({
   course: z.enum(COURSE_OPTIONS.map((o) => o.value) as ["LLB_3", "LLB_5"]),
@@ -36,8 +36,17 @@ export async function POST(request: Request) {
       minority: "none" as const,
     };
 
-    const rows = await fetchRoundCutoffs(profile, YEARS);
-    return NextResponse.json({ rows });
+    const [rows, rankList] = await Promise.all([
+      fetchRoundCutoffs(profile, YEARS),
+      getMsOpenRankList(parsed.data.course),
+    ]);
+
+    // Build rank lookup: "collegeId|divisionId" → rank index (1-based)
+    const rankMap = new Map(
+      rankList.map((r, i) => [`${r.college_id}|${r.division_id}`, i + 1]),
+    );
+
+    return NextResponse.json({ rows, rankMap: Object.fromEntries(rankMap) });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: "Failed" }, { status: 500 });

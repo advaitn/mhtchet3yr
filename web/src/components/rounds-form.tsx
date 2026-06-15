@@ -34,9 +34,19 @@ type CollegeRoundProfile = {
   division_id: string;
   division_name: string;
   university_name: string;
+  msOpenRank: number;
+  msOpenCutoff: number;
   /** year → phase → { cutoff, count } */
   data: Record<number, Record<string, { cutoff: number; count: number }>>;
 };
+
+const SORT_OPTIONS = [
+  { value: "recommended", label: "Recommended (rank + opportunity)" },
+  { value: "rank", label: "MS OPEN rank" },
+  { value: "opportunity", label: "Best round opportunity first" },
+  { value: "name", label: "College name (A–Z)" },
+] as const;
+type SortOption = (typeof SORT_OPTIONS)[number]["value"];
 
 const PHASES = ["Round-I", "Round-II", "Round-III"] as const;
 const PHASE_SHORT: Record<string, string> = {
@@ -117,6 +127,7 @@ export function RoundsForm() {
   const [userPct, setUserPct] = useState<number | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<SortOption>("recommended");
   const [isPending, startTransition] = useTransition();
 
   function handleSearch(event: React.FormEvent) {
@@ -134,13 +145,15 @@ export function RoundsForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ course, category, percentile: pct, gender, candidatureType, divisionGender }),
       });
-      const data = await res.json() as { rows?: RoundCutoffRow[]; error?: string };
+      const data = await res.json() as { rows?: RoundCutoffRow[]; rankMap?: Record<string, number>; error?: string };
       if (!res.ok || !data.rows) {
         setError(data.error ?? "Search failed.");
         setColleges([]);
         setHasSearched(true);
         return;
       }
+
+      const rankMap = data.rankMap ?? {};
 
       // Pivot rows → CollegeRoundProfile[]
       const map = new Map<string, CollegeRoundProfile>();
@@ -153,6 +166,8 @@ export function RoundsForm() {
             division_id: row.division_id,
             division_name: row.division_name,
             university_name: row.university_name,
+            msOpenRank: rankMap[key] ?? 9999,
+            msOpenCutoff: 0,
             data: {},
           });
         }
@@ -161,24 +176,7 @@ export function RoundsForm() {
         profile.data[row.year][row.phase] = { cutoff: row.cutoff, count: row.count };
       }
 
-      // Sort: colleges where you qualify in Round I first, then II, then III, then miss
-      const sorted = [...map.values()].sort((a, b) => {
-        const score = (p: CollegeRoundProfile) => {
-          for (const phase of PHASES) {
-            const cutoffs = Object.values(p.data)
-              .map((yr) => yr[phase]?.cutoff)
-              .filter((c): c is number => c !== undefined);
-            if (cutoffs.length === 0) continue;
-            const minCutoff = Math.min(...cutoffs);
-            if (pct >= minCutoff) return PHASES.indexOf(phase);
-            if (pct >= minCutoff - 2) return PHASES.indexOf(phase) + 0.5;
-          }
-          return 10;
-        };
-        return score(a) - score(b);
-      });
-
-      setColleges(sorted);
+      setColleges([...map.values()]);
       setUserPct(pct);
       setHasSearched(true);
     });
@@ -189,6 +187,41 @@ export function RoundsForm() {
     for (const c of colleges) for (const y of Object.keys(c.data)) yrs.add(Number(y));
     return [...yrs].sort();
   }, [colleges]);
+
+  function opportunityScore(p: CollegeRoundProfile, pct: number): number {
+    for (const phase of PHASES) {
+      const cutoffs = Object.values(p.data)
+        .map((yr) => yr[phase]?.cutoff)
+        .filter((c): c is number => c !== undefined);
+      if (cutoffs.length === 0) continue;
+      const minCutoff = Math.min(...cutoffs);
+      if (pct >= minCutoff) return PHASES.indexOf(phase);
+      if (pct >= minCutoff - 2) return PHASES.indexOf(phase) + 0.5;
+    }
+    return 10;
+  }
+
+  const sortedColleges = useMemo(() => {
+    if (!userPct) return colleges;
+    const total = colleges.length;
+    return [...colleges].sort((a, b) => {
+      switch (sortBy) {
+        case "recommended": {
+          // Blend prestige (rank) and opportunity (round score) equally
+          const prestige = (p: CollegeRoundProfile) =>
+            (1 - (p.msOpenRank - 1) / Math.max(total - 1, 1)) * 10;
+          const opp = (p: CollegeRoundProfile) => -opportunityScore(p, userPct!); // negate so lower = better
+          return (opp(b) + prestige(b)) - (opp(a) + prestige(a));
+        }
+        case "rank":
+          return a.msOpenRank - b.msOpenRank;
+        case "opportunity":
+          return opportunityScore(a, userPct!) - opportunityScore(b, userPct!);
+        case "name":
+          return a.college_name.localeCompare(b.college_name);
+      }
+    });
+  }, [colleges, sortBy, userPct]);
 
   const qualifyCount = useMemo(() => {
     if (!userPct) return 0;
@@ -340,12 +373,25 @@ export function RoundsForm() {
 
       {hasSearched && colleges.length > 0 && userPct !== null && (
         <section className="min-w-0 space-y-4">
-          <div>
-            <h2 className="text-xl font-semibold">Round-by-round fitment</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {qualifyCount} of {colleges.length} colleges have at least one round where your {userPct}% qualifies.
-              Sorted best opportunity first.
-            </p>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold">Round-by-round fitment</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {qualifyCount} of {colleges.length} colleges have at least one round where your {userPct}% qualifies.
+              </p>
+            </div>
+            <Field className="min-w-[200px]">
+              <Label htmlFor="sort-rounds">Sort by</Label>
+              <Select
+                id="sort-rounds"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+              >
+                {SORT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </Select>
+            </Field>
           </div>
 
           {/* Legend */}
@@ -378,7 +424,7 @@ export function RoundsForm() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {colleges.map((college) => {
+                {sortedColleges.map((college) => {
                   const logo = universityLogo(college.university_name);
                   const uniName = shortUniversityName(college.university_name);
                   return (
