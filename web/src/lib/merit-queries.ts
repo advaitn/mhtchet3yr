@@ -249,7 +249,7 @@ function aggregateProfileByDivision(
  * Demographic sub-filters (PH / orphan / ex-servicemen) are not present in
  * allotment data and are intentionally omitted.
  */
-function buildAllotmentWhere(
+export function buildAllotmentWhere(
   profile: CandidateProfile,
   startIndex: number,
   alias = "ae",
@@ -365,6 +365,59 @@ async function fetchAllotmentCutoffs(
   );
 }
 
+
+export type RoundCutoffRow = {
+  year: number;
+  college_id: string;
+  college_name: string;
+  division_id: string;
+  division_name: string;
+  university_name: string;
+  phase: string;
+  cutoff: number;
+  count: number;
+};
+
+/**
+ * Per-phase (Round I/II/III) cutoffs for a given candidate profile.
+ * Groups by year + college + division + phase so the consumer can
+ * build a year × round pivot for each college.
+ */
+export async function fetchRoundCutoffs(
+  profile: CandidateProfile,
+  years: readonly number[],
+): Promise<RoundCutoffRow[]> {
+  const allotWhere = buildAllotmentWhere(profile, 3);
+
+  const query = `
+    SELECT
+      ae.year,
+      ae.college_id,
+      MIN(ae.college_name)    AS college_name,
+      ae.division_id,
+      MIN(ae.division_name)   AS division_name,
+      MIN(ae.university_name) AS university_name,
+      ae.phase,
+      MIN(ae.merit_marks::float) AS cutoff,
+      COUNT(*)::int              AS count
+    FROM allotment_entries ae
+    WHERE ae.course = $1::"Course"
+      AND ae.year = ANY($2::int[])
+      AND ae.merit_marks > 0
+      AND ae.merit_marks <= 100
+      AND ${allotWhere.where.join("\n      AND ")}
+    GROUP BY ae.year, ae.college_id, ae.division_id, ae.phase
+    HAVING COUNT(*) >= 2
+    ORDER BY ae.college_id, ae.division_id, ae.year, ae.phase
+  `;
+
+  return prisma.$queryRawUnsafe<RoundCutoffRow[]>(
+    query,
+    profile.course,
+    years,
+    ...allotWhere.params,
+  );
+}
 
 export async function findEligibleColleges(
   profile: CandidateProfile,

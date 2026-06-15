@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 const links = [
   { href: "/", label: "Home" },
   { href: "/finder?course=3", label: "College Finder" },
+  { href: "/rounds", label: "Round Strategy" },
   { href: "/rankings", label: "Rankings" },
 ];
 
